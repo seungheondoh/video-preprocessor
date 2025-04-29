@@ -15,7 +15,8 @@ setup(
         "pillow",
         "matplotlib",
         "scipy",
-        "ffmpeg",
+        "ffmpeg", # 안될 경우 "ffmpeg-python"을 사용하거나 sudo apt install ffmpeg로 설치.
+        "yt-dlp",
     ],
     entry_points={
         "console_scripts": [
