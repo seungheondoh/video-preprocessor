@@ -1,0 +1,3 @@
+[submodule "gaudio-yt-videos-list"]
+	path = gaudio-yt-videos-list
+	url = https://github.com/minigb/gaudio-yt-videos-list.git
