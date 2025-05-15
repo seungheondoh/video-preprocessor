@@ -18,8 +18,8 @@ DOWNLOAD_DIR = "/mnt/hdd8tb/downloads_clip"
 JSON_PATH = "MMTrail2M_uncrawled_part1.json"
 
 S3_BUCKET = "maclab-youtube-crawl"
-S3_PREFIX = "chopin16" #"minhee_crawling"
-NUM_WORKERS = 16 # 8
+S3_PREFIX = "minhee_crawling"
+NUM_WORKERS = 8
 
 s3 = boto3.client("s3")
 
