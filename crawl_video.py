@@ -9,13 +9,18 @@ from multiprocessing import Pool
 import time
 import random
 import boto3
+import pandas as pd
+from collections import defaultdict
+
+from gaudio_yt_videos_list.utils.id import get_channel_or_playlist_id
 
 # 기본 설정
 FAILED_LOG = "failed_ids_clip.txt"
 UPLOAD_FAILED_LOG = "upload_failed_ids.txt"
 COMPLETED_LOG = "complete_clip_ids.txt"
 DOWNLOAD_DIR = "/mnt/hdd8tb/downloads_clip"
-JSON_PATH = "MMTrail2M_uncrawled_part1.json"
+CSV_PATH = "gaudio_yt_videos_list/channel_and_playlist/final_result.csv"
+TXT_DIR = 'gaudio_yt_videos_list/ytids'
 
 S3_BUCKET = "maclab-youtube-crawl"
 S3_PREFIX = "minhee_crawling"
@@ -114,8 +119,11 @@ def download_and_upload(video_info):
     video_id = video_info['video_id']
     clip_id = video_info['clip_id']
 
-    if clip_id in failed_ids or clip_id in completed_ids:
-        return False
+    # We already checked this in the main function
+    # failed_ids = load_failed_ids()
+    # completed_ids = load_completed_ids()
+    # if clip_id in failed_ids or clip_id in completed_ids:
+    #     return False
 
     video_dir = os.path.join(DOWNLOAD_DIR, clip_id)
 
@@ -185,14 +193,40 @@ def download_and_upload(video_info):
         if os.path.exists(video_dir):
             shutil.rmtree(video_dir)
         return False
+    
+def get_video_ids_per_category():
+    df = pd.read_csv(CSV_PATH)
+    video_ids_dict = defaultdict(list)
+    
+    for _, row in df.iterrows():
+        # get id of channel or playlist
+        channel_pl_id = get_channel_or_playlist_id(row)
+        
+        # read the txt file and get the video ids
+        txt_file_path = os.path.join(TXT_DIR, f"{channel_pl_id}.txt")
+        if os.path.exists(txt_file_path):
+            with open(txt_file_path, "r", encoding="utf-8") as f:
+                video_links = [line.strip() for line in f.readlines()]
+            video_ids = [link.split("https://www.youtube.com/watch?v=")[-1] for link in video_links]
+            video_ids_dict[channel_pl_id].extend(video_ids)
+        else:
+            print(f"❌ {txt_file_path} 파일이 존재하지 않음")
+    return video_ids_dict
 
-if __name__ == '__main__':
-    with open(JSON_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
+def main():
+    video_ids_dict = get_video_ids_per_category()
+    
+    # remove duplicates
+    for category, video_ids in video_ids_dict.items():
+        video_ids_dict[category] = list(set(video_ids))
+    
+    # flatten the dictionary to a list
+    video_ids = sum(video_ids_dict.values(), [])
+    clip_ids = [f'{video_id}_tmp' for video_id in video_ids]
 
     failed_ids = load_failed_ids()
     completed_ids = load_completed_ids()
-    data = [item for item in data if item['clip_id'] not in failed_ids and item['clip_id'] not in completed_ids]
+    data = [clip_id for clip_id in clip_ids if clip_id not in failed_ids and clip_id not in completed_ids]
 
     print(f"🔍 처리할 clip_id 수: {len(data)}")
 
@@ -200,3 +234,6 @@ if __name__ == '__main__':
         with tqdm(total=len(data), desc="다운로드 및 업로드 진행") as pbar:
             for result in pool.imap_unordered(download_and_upload, data):
                 pbar.update(1)
+
+if __name__ == '__main__':
+    main()
