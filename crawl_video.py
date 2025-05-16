@@ -119,7 +119,7 @@ def download_and_upload(video_info):
     video_id = video_info['video_id']
     clip_id = video_info['clip_id']
 
-    # We already checked this in the main function
+    # # We already checked this in the main function
     # failed_ids = load_failed_ids()
     # completed_ids = load_completed_ids()
     # if clip_id in failed_ids or clip_id in completed_ids:
@@ -136,10 +136,10 @@ def download_and_upload(video_info):
     mp3_path = os.path.join(video_dir, f"{clip_id}_audio.mp3")
     json_path = os.path.join(video_dir, f"{clip_id}.info.json")
 
-    start_frame, end_frame = video_info['clip_start_end_idx']
-    fps = video_info['video_fps']
-    start_sec = start_frame / fps
-    end_sec = end_frame / fps
+    # start_frame, end_frame = video_info['clip_start_end_idx']
+    # fps = video_info['video_fps']
+    # start_sec = start_frame / fps
+    # end_sec = end_frame / fps
 
     try:
         ydl_opts = {
@@ -153,7 +153,7 @@ def download_and_upload(video_info):
             'merge_output_format': 'mp4',
             'writeinfojson': True,
             'force_keyframes_at_cuts': True,
-            'download_ranges': download_range_func(None, [(start_sec, end_sec)]),
+            # 'download_ranges': download_range_func(None, [(start_sec, end_sec)]),
             'postprocessors': [],
         }
         
@@ -162,7 +162,8 @@ def download_and_upload(video_info):
         print(f"[WAIT] {clip_id} 다운로드 전 대기 중... ({sleep_time:.2f}초)")
         time.sleep(sleep_time)
 
-        print(f">>> {clip_id} 다운로드 중... ({start_sec:.2f}s ~ {end_sec:.2f}s)")
+        # print(f">>> {clip_id} 다운로드 중... ({start_sec:.2f}s ~ {end_sec:.2f}s)")
+        print(f">>> {clip_id} 다운로드 중...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
 
@@ -236,6 +237,7 @@ def main():
     video_ids_df = get_video_ids_per_category()
     clip_ids = video_ids_df['clip_id'].tolist()
     # remove duplicates
+    # data
     clip_ids = list(set(clip_ids))
 
     failed_ids = load_failed_ids()
