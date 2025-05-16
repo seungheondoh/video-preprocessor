@@ -196,7 +196,8 @@ def download_and_upload(video_info):
     
 def get_video_ids_per_category():
     df = pd.read_csv(CSV_PATH)
-    video_ids_dict = defaultdict(list)
+    categories_result = []
+    video_ids_result = []
     
     for _, row in df.iterrows():
         # get id of channel or playlist
@@ -208,21 +209,34 @@ def get_video_ids_per_category():
             with open(txt_file_path, "r", encoding="utf-8") as f:
                 video_links = [line.strip() for line in f.readlines()]
             video_ids = [link.split("https://www.youtube.com/watch?v=")[-1] for link in video_links]
-            video_ids_dict[channel_pl_id].extend(video_ids)
+            
+            categories_result.extend([row['category']] * len(video_ids))
+            video_ids_result.extend(video_ids)
         else:
             print(f"❌ {txt_file_path} 파일이 존재하지 않음")
-    return video_ids_dict
+    
+    # create a dataframe
+    result_df = pd.DataFrame({
+        'category': categories_result,
+        'video_id': video_ids_result
+    })
+    # remove duplicates
+    result_df = result_df.drop_duplicates(subset=['category', 'video_id'])
+    # # Check for duplicated video_id
+    # duplicated = result_df[result_df.duplicated(subset=['video_id'], keep=False)]
+    # if not duplicated.empty:
+    #     print("⚠️ 중복된 video_id 발견:")
+    #     print(duplicated[['category', 'video_id']])
+    # create clip_id
+    result_df['clip_id'] = result_df['video_id'] + '_tmp'
+    
+    return result_df
 
 def main():
-    video_ids_dict = get_video_ids_per_category()
-    
+    video_ids_df = get_video_ids_per_category()
+    clip_ids = video_ids_df['clip_id'].tolist()
     # remove duplicates
-    for category, video_ids in video_ids_dict.items():
-        video_ids_dict[category] = list(set(video_ids))
-    
-    # flatten the dictionary to a list
-    video_ids = sum(video_ids_dict.values(), [])
-    clip_ids = [f'{video_id}_tmp' for video_id in video_ids]
+    clip_ids = list(set(clip_ids))
 
     failed_ids = load_failed_ids()
     completed_ids = load_completed_ids()
