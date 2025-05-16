@@ -10,9 +10,8 @@ import time
 import random
 import boto3
 import pandas as pd
-from collections import defaultdict
 
-from gaudio_yt_videos_list.utils.id import get_channel_or_playlist_id
+from gaudio_yt_videos_list.utils.id import get_channel_or_playlist_id, extract_video_id
 
 # 기본 설정
 LOG_DIR = "logs"
@@ -20,7 +19,7 @@ FAILED_LOG = f"{LOG_DIR}/failed_ids_clip.txt"
 UPLOAD_FAILED_LOG = f"{LOG_DIR}/upload_failed_ids.txt"
 COMPLETED_LOG = f"{LOG_DIR}/complete_clip_ids.txt"
 
-DOWNLOAD_DIR = "download_tmp_dir"
+DOWNLOAD_DIR = "video_crawled_dir"
 CSV_PATH = "gaudio_yt_videos_list/channel_and_playlist/final_result.csv"
 TXT_DIR = 'gaudio_yt_videos_list/ytids'
 
@@ -193,7 +192,7 @@ def download_and_upload(video_id):
         if os.path.exists(video_dir):
             shutil.rmtree(video_dir)
         return False
-    
+
 def get_video_ids_per_category():
     df = pd.read_csv(CSV_PATH)
     categories_result = []
@@ -208,7 +207,7 @@ def get_video_ids_per_category():
         if os.path.exists(txt_file_path):
             with open(txt_file_path, "r", encoding="utf-8") as f:
                 video_links = [line.strip() for line in f.readlines()]
-            video_ids = [link.split("https://www.youtube.com/watch?v=")[-1] for link in video_links]
+            video_ids = [extract_video_id(link) for link in video_links]
             
             categories_result.extend([row['category']] * len(video_ids))
             video_ids_result.extend(video_ids)
@@ -221,13 +220,9 @@ def get_video_ids_per_category():
         'video_id': video_ids_result
     })
     # remove duplicates
-    result_df = result_df.drop_duplicates(subset=['category', 'video_id'])
-    # # Check for duplicated video_id
-    # duplicated = result_df[result_df.duplicated(subset=['video_id'], keep=False)]
-    # if not duplicated.empty:
-    #     print("⚠️ 중복된 video_id 발견:")
-    #     print(duplicated[['category', 'video_id']])
-    # create clip_id
+    # result_df = result_df.drop_duplicates(subset=['category', 'video_id'])
+    result_df = result_df.drop_duplicates(subset=['video_id'])
+    
     result_df['clip_id'] = result_df['video_id'] + '_tmp'
     
     return result_df
