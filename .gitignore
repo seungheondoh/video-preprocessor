@@ -1,4 +1,5 @@
 video_crawled_dir/
+cookies/
 
 venv/
 video_preprocessor.egg-info/

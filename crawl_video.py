@@ -29,6 +29,18 @@ NUM_WORKERS = 8
 
 s3 = boto3.client("s3")
 
+# cookies file
+COOKIES_FILE_DIR = "./cookies"
+COOKIE_FILE_NAMES = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')] + ['default.txt']
+global cur_cookie_file_index
+cur_cookie_file_index = 0
+
+def get_cookie_file_path():
+    global cur_cookie_file_index
+    cookie_file_name = COOKIE_FILE_NAMES[cur_cookie_file_index]
+    cookie_file_path = os.path.join(COOKIES_FILE_DIR, cookie_file_name)
+    return cookie_file_path
+
 def load_failed_ids():
     if os.path.exists(FAILED_LOG):
         with open(FAILED_LOG, "r", encoding="utf-8") as f:
@@ -53,6 +65,12 @@ def log_completed(clip_id):
 def log_upload_failed(clip_id):
     with open(UPLOAD_FAILED_LOG, "a", encoding="utf-8") as f:
         f.write(f"{clip_id}\n")
+        
+def handle_error_message(error_message) -> None:
+    if "Sign in to confirm you’re not a bot" in error_message:
+        global cur_cookie_file_index
+        cur_cookie_file_index = (cur_cookie_file_index + 1) % len(COOKIE_FILE_NAMES)
+        print(f"🔄 쿠키 파일 변경: {COOKIE_FILE_NAMES[cur_cookie_file_index]}")
 
 def extract_audio(mp4_path, mp3_path):
     cmd = [
@@ -145,7 +163,7 @@ def download_and_upload(video_id):
             'no_warnings': True,
             'noplaylist': True,
             'ignoreerrors': True,
-            'cookiefile': './cookies.txt',
+            'cookiefile': get_cookie_file_path(),
             'outtmpl': mp4_path_template,
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
             'merge_output_format': 'mp4',
@@ -187,6 +205,7 @@ def download_and_upload(video_id):
     except Exception as e:
         error_msg = str(e).lower()
         log_failed(video_id, error_msg)
+        handle_error_message(error_msg)
 
         # 일반 실패 시 클린업
         if os.path.exists(video_dir):
