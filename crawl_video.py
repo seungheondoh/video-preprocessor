@@ -221,7 +221,7 @@ def get_video_ids_per_category():
     })
     # remove duplicates
     # result_df = result_df.drop_duplicates(subset=['category', 'video_id'])
-    result_df = result_df.drop_duplicates(subset=['video_id'])
+    result_df = result_df.drop_duplicates(subset=['video_id']) # TODO(minhee): There are some duplicates in the video_id, where each video falls into different categories.
     
     result_df['clip_id'] = result_df['video_id'] + '_tmp'
     
