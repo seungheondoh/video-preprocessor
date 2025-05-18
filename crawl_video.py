@@ -67,7 +67,7 @@ def log_upload_failed(clip_id):
         f.write(f"{clip_id}\n")
         
 def handle_error_message(error_message) -> None:
-    if "Sign in to confirm you’re not a bot" in error_message:
+    if "not a bot" in error_message or "rate-limited" in error_message:
         global cur_cookie_file_index
         cur_cookie_file_index = (cur_cookie_file_index + 1) % len(COOKIE_FILE_NAMES)
         print(f"🔄 쿠키 파일 변경: {COOKIE_FILE_NAMES[cur_cookie_file_index]}")
@@ -171,6 +171,10 @@ def download_and_upload(video_id):
             'force_keyframes_at_cuts': True,
             # 'download_ranges': download_range_func(None, [(start_sec, end_sec)]),
             'postprocessors': [],
+            # # TODO(minhee): Check whether to add these options or not
+            # 'retries': 10,
+            # 'sleep_interval': 2,
+            # 'socket_timeout': 60,
         }
         
         # ✅ 랜덤한 시간 지연 추가 (0.5초 ~ 1.5초)
