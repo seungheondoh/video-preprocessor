@@ -5,7 +5,7 @@ import json
 import shutil
 import subprocess
 from tqdm import tqdm
-from multiprocessing import Pool
+from multiprocessing import Pool, Value
 import time
 import random
 import boto3
@@ -31,13 +31,12 @@ s3 = boto3.client("s3")
 
 # cookies file
 COOKIES_FILE_DIR = "./cookies"
-COOKIE_FILE_NAMES = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')] + ['default.txt']
-global cur_cookie_file_index
-cur_cookie_file_index = 0
+cur_cookie_index = Value('i', 0)  # shared integer
 
 def get_cookie_file_path():
-    global cur_cookie_file_index
-    cookie_file_name = COOKIE_FILE_NAMES[cur_cookie_file_index]
+    cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')] + ['default.txt']
+    cur_cookie_index.value = cur_cookie_index.value % len(cookie_file_names)  # Ensure index is within bounds
+    cookie_file_name = cookie_file_names[cur_cookie_index.value]
     cookie_file_path = os.path.join(COOKIES_FILE_DIR, cookie_file_name)
     return cookie_file_path
 
@@ -66,11 +65,14 @@ def log_upload_failed(clip_id):
     with open(UPLOAD_FAILED_LOG, "a", encoding="utf-8") as f:
         f.write(f"{clip_id}\n")
         
-def handle_error_message(error_message) -> None:
+def handle_error_message(error_message, used_cookie_fn) -> None:
     if "not a bot" in error_message or "rate-limited" in error_message:
-        global cur_cookie_file_index
-        cur_cookie_file_index = (cur_cookie_file_index + 1) % len(COOKIE_FILE_NAMES)
-        print(f"🔄 쿠키 파일 변경: {COOKIE_FILE_NAMES[cur_cookie_file_index]}")
+        with cur_cookie_index.get_lock():  # Lock ensures atomic update
+            cur_cookie_fn = get_cookie_file_path()
+            if cur_cookie_fn != used_cookie_fn: # already changed
+                return
+            cur_cookie_index.value += 1
+            print(f"🔄 쿠키 파일 변경: {get_cookie_file_path()}")
 
 def extract_audio(mp4_path, mp3_path):
     cmd = [
@@ -157,13 +159,14 @@ def download_and_upload(video_id):
     # start_sec = start_frame / fps
     # end_sec = end_frame / fps
 
+    cookie_fn = get_cookie_file_path()
     try:
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
-            'ignoreerrors': True,
-            'cookiefile': get_cookie_file_path(),
+            'ignoreerrors': False, # Changed to False so that the exception is raised
+            'cookiefile': cookie_fn,
             'outtmpl': mp4_path_template,
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
             'merge_output_format': 'mp4',
@@ -187,33 +190,33 @@ def download_and_upload(video_id):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
 
-        if os.path.exists(mp4_path):
-            extract_audio(mp4_path, mp3_path)
-            
-        if not (os.path.exists(mp4_path) and os.path.exists(mp3_path) and os.path.exists(json_path)):
-            log_failed(video_id, "다운로드된 파일 없음")
-            if os.path.exists(video_dir):
-                shutil.rmtree(video_dir)
-            return False
-
-        # ✅ S3 업로드
-        if upload_clip_folder(video_id):
-            shutil.rmtree(video_dir)
-            log_completed(video_id)
-            print(f"업로드 성공: {video_id}")
-            return True
-        else:
-            print(f"❌ S3 업로드 실패: {video_id}")
-            return False
-
     except Exception as e:
         error_msg = str(e).lower()
         log_failed(video_id, error_msg)
-        handle_error_message(error_msg)
+        handle_error_message(error_msg, cookie_fn)
 
         # 일반 실패 시 클린업
         if os.path.exists(video_dir):
             shutil.rmtree(video_dir)
+        return False
+    
+    if os.path.exists(mp4_path):
+        extract_audio(mp4_path, mp3_path)
+        
+    if not (os.path.exists(mp4_path) and os.path.exists(mp3_path) and os.path.exists(json_path)):
+        log_failed(video_id, "다운로드된 파일 없음")
+        if os.path.exists(video_dir):
+            shutil.rmtree(video_dir)
+        return False
+
+    # ✅ S3 업로드
+    if upload_clip_folder(video_id):
+        shutil.rmtree(video_dir)
+        log_completed(video_id)
+        print(f"업로드 성공: {video_id}")
+        return True
+    else:
+        print(f"❌ S3 업로드 실패: {video_id}")
         return False
 
 def get_video_ids_per_category():
