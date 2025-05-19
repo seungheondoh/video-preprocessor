@@ -35,6 +35,12 @@ crawl_s3_clips_from_file(
 )
 ```
 
+# Automatically Switching Cookie Files When Blocked by `yt-dlp`
+
+1. Create a directory named `./cookies`.
+2. Add multiple cookie files to that directory (e.g., `cookie1.txt`, `cookie2.txt`, ...).
+3. When running `./crawling/crawl_and_upload.py`, the script will automatically detect if a rate-limit or "not a bot" error occurs and switch to a different cookie file for the next attempt.
+
 # Setting Personal Config
 1. Copy the template file ```configs/user_config_template.py``` and rename it to ```configs/user_config.py```.
 2. Open ```configs/user_config.py``` and fill in the appropriate values based on your local environment.

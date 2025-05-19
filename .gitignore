@@ -1,6 +1,9 @@
 # Ignore user-specific config
 configs/user_config.py
 
+# Ignore cookies directory
+cookies/
+
 # Ignore virtual env
 venv/
 video_preprocessor.egg-info/
