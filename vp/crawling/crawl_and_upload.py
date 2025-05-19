@@ -1,6 +1,3 @@
-##################################################################
-# 비디오 크롤링 -> 로컬 임시 저장 -> S3 업로드를 한번에 실행하는 코드. 
-##################################################################
 import yt_dlp
 from yt_dlp.utils import download_range_func
 import os
@@ -8,16 +5,33 @@ import json
 import shutil
 import subprocess
 from tqdm import tqdm
-from multiprocessing import Pool
+from multiprocessing import Pool, Value
 import time
 import random
 import boto3
 
 from vp.utils.fetch_data import *
-
-DOWNLOAD_DIR = "/mnt/hdd8tb/downloads_clip"
+from vp.configs.constants import *
 
 s3 = boto3.client("s3")
+
+# cookies file
+cur_cookie_index = Value('i', 0)  # shared integer
+
+def get_cookie_file_path():
+    cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')] + ['default.txt']
+    cur_cookie_index.value = cur_cookie_index.value % len(cookie_file_names)  # Ensure index is within bounds
+    cookie_file_name = cookie_file_names[cur_cookie_index.value]
+    cookie_file_path = os.path.join(COOKIES_FILE_DIR, cookie_file_name)
+    return cookie_file_path
+
+def handle_error_message(error_message, used_cookie_fn) -> None:
+    if "not a bot" in error_message or "rate-limited" in error_message:
+        with cur_cookie_index.get_lock():  # Lock ensures atomic update
+            if get_cookie_file_path() != used_cookie_fn: # check if is already changed
+                return
+            cur_cookie_index.value += 1
+            print(f"🔄 쿠키 파일 변경: {get_cookie_file_path()}")
 
 def extract_audio(mp4_path, mp3_path):
     cmd = [
@@ -28,7 +42,6 @@ def extract_audio(mp4_path, mp3_path):
     ]
     subprocess.run(cmd, check=True)
 
-# 크롤링 및 업로드를 실행하는 메인 함수.
 def download_and_upload(video_info):
     video_id = video_info['video_id']
     clip_id = video_info['clip_id']
@@ -52,13 +65,14 @@ def download_and_upload(video_info):
     start_sec = start_frame / fps
     end_sec = end_frame / fps
 
+    cookie_fn = get_cookie_file_path()
     try:
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
-            'ignoreerrors': True,
-            'cookiefile': './cookies.txt',
+            'ignoreerrors': False, # Changed to False so that the exception is raised
+            'cookiefile': cookie_fn,
             'outtmpl': mp4_path_template,
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
             'merge_output_format': 'mp4',
@@ -77,40 +91,42 @@ def download_and_upload(video_info):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
 
-        if os.path.exists(mp4_path):
-            extract_audio(mp4_path, mp3_path)
-            
-        if not (os.path.exists(mp4_path) and os.path.exists(mp3_path) and os.path.exists(json_path)):
-            log_failed(clip_id, "다운로드된 파일 없음")
-            if os.path.exists(video_dir):
-                shutil.rmtree(video_dir)
-            return False
-
-        # ✅ S3 업로드
-        if upload_clip_folder(clip_id):
-            shutil.rmtree(video_dir)
-            log_completed(clip_id)
-            return True
-        else:
-            print(f"❌ S3 업로드 실패: {clip_id}")
-            return False
-
     except Exception as e:
         error_msg = str(e).lower()
-        log_failed(clip_id, error_msg)
+        log_result(clip_id, FAILED_LOG, error_msg)
+        handle_error_message(error_msg, cookie_fn)
 
         # 일반 실패 시 클린업
         if os.path.exists(video_dir):
             shutil.rmtree(video_dir)
         return False
+    
+    if os.path.exists(mp4_path):
+        extract_audio(mp4_path, mp3_path)
+        
+    if not (os.path.exists(mp4_path) and os.path.exists(mp3_path) and os.path.exists(json_path)):
+        log_result(clip_id, FAILED_LOG, "다운로드된 파일 없음")
+        if os.path.exists(video_dir):
+            shutil.rmtree(video_dir)
+        return False
 
-# 병렬처리로 크롤링, 업로드 진행.
+    # ✅ S3 업로드
+    if upload_clip_folder(clip_id):
+        shutil.rmtree(video_dir)
+        log_result(clip_id, COMPLETED_LOG)
+        print(f"업로드 성공: {clip_id}")
+        return True
+    else:
+        print(f"❌ S3 업로드 실패: {clip_id}")
+        return False
+
+
 if __name__ == '__main__':
     with open(JSON_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    failed_ids = load_failed_ids()
-    completed_ids = load_completed_ids()
+    failed_ids = load_ids(FAILED_LOG)
+    completed_ids = load_ids(COMPLETED_LOG)
     data = [item for item in data if item['clip_id'] not in failed_ids and item['clip_id'] not in completed_ids]
 
     print(f"🔍 처리할 clip_id 수: {len(data)}")
@@ -119,4 +135,3 @@ if __name__ == '__main__':
         with tqdm(total=len(data), desc="다운로드 및 업로드 진행") as pbar:
             for result in pool.imap_unordered(download_and_upload, data):
                 pbar.update(1)
-

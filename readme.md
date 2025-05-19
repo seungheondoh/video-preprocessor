@@ -34,3 +34,29 @@ crawl_s3_clips_from_file(
     mode="all"  # "mp4", "mp3", "json" 도 가능
 )
 ```
+
+# How to Crawl and Upload
+## Set Personal Config
+1. Create user config file.
+    ```
+    bash cd vp/configs
+    touch user_config.py
+    ```
+2. Refer to ```constants.py``` and define private/user-specific values based on your local environment.
+   - **Note:** This file is gitignored and will not be committed to the repository.
+
+## Set to Automatically Switch Cookie Files When Blocked by `yt-dlp`
+
+1. Create a directory for cookie files.
+    ```bash
+    cd vp/crawling
+    mkdir cookies
+    ```
+2. Add multiple cookie files to that directory (e.g., `cookie1.txt`, `cookie2.txt`, ...).
+3. When running `crawl_and_upload.py`, the script will automatically detect if a rate-limit or "not a bot" error occurs and switch to a different cookie file for the next attempt.
+
+## Run the crawling code
+    ```bash
+    cd vp/crawling
+    python crawl_and_upload.py
+    ```

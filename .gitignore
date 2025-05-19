@@ -1,5 +1,11 @@
-video_crawled_dir/
-cookies/
+# Ignore user-specific config
+vp/configs/user_config.py
 
+# Ignore cookies directory
+vp/crawling/cookies/
+
+# Ignore virtual env
 venv/
+
+*__pycache__
 video_preprocessor.egg-info/
