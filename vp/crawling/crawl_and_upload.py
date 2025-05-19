@@ -11,17 +11,7 @@ import random
 import boto3
 
 from utils.fetch_data import *
-
-# 기본 설정
-FAILED_LOG = "failed_ids_clip.txt"
-UPLOAD_FAILED_LOG = "upload_failed_ids.txt"
-COMPLETED_LOG = "complete_clip_ids.txt"
-DOWNLOAD_DIR = "/mnt/hdd8tb/downloads_clip"
-JSON_PATH = "MMTrail2M_uncrawled_part1.json"
-
-S3_BUCKET = "maclab-youtube-crawl"
-S3_PREFIX = "chopin16" #"minhee_crawling"
-NUM_WORKERS = 16 # 8
+from configs.constants import *
 
 s3 = boto3.client("s3")
 

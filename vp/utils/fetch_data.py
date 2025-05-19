@@ -2,16 +2,7 @@ import os
 from tqdm import tqdm
 import boto3
 
-# 기본 설정
-FAILED_LOG = "failed_ids_clip.txt"
-UPLOAD_FAILED_LOG = "upload_failed_ids.txt"
-COMPLETED_LOG = "complete_clip_ids.txt"
-DOWNLOAD_DIR = "/mnt/hdd8tb/downloads_clip"
-JSON_PATH = "MMTrail2M_uncrawled_part1.json"
-
-S3_BUCKET = "maclab-youtube-crawl"
-S3_PREFIX = "chopin16"
-NUM_WORKERS = 16
+from ...configs.constants import *
 
 s3 = boto3.client("s3")
 

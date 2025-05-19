@@ -1,3 +1,6 @@
-venv/
+# Ignore user-specific config
+configs/user_config.py
 
+# Ignore virtual env
+venv/
 video_preprocessor.egg-info/
