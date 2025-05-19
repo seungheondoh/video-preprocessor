@@ -12,6 +12,7 @@ import boto3
 import pandas as pd
 
 from gaudio_yt_videos_list.utils.id import get_channel_or_playlist_id, extract_video_id
+from utils.fetch_data import *
 
 # 기본 설정
 LOG_DIR = "logs"
@@ -40,31 +41,6 @@ def get_cookie_file_path():
     cookie_file_path = os.path.join(COOKIES_FILE_DIR, cookie_file_name)
     return cookie_file_path
 
-def load_failed_ids():
-    if os.path.exists(FAILED_LOG):
-        with open(FAILED_LOG, "r", encoding="utf-8") as f:
-            return set(line.strip() for line in f)
-    return set()
-
-def load_completed_ids():
-    if os.path.exists(COMPLETED_LOG):
-        with open(COMPLETED_LOG, "r", encoding="utf-8") as f:
-            return set(line.strip() for line in f)
-    return set()
-
-def log_failed(clip_id, error_msg=""):
-    with open(FAILED_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{clip_id}\n")
-    print(f"[ERROR] {clip_id} 실패 기록됨. 사유: {error_msg}")
-
-def log_completed(clip_id):
-    with open(COMPLETED_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{clip_id}\n")
-
-def log_upload_failed(clip_id):
-    with open(UPLOAD_FAILED_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{clip_id}\n")
-        
 def handle_error_message(error_message, used_cookie_fn) -> None:
     if "not a bot" in error_message or "rate-limited" in error_message:
         with cur_cookie_index.get_lock():  # Lock ensures atomic update
@@ -82,59 +58,6 @@ def extract_audio(mp4_path, mp3_path):
         mp3_path
     ]
     subprocess.run(cmd, check=True)
-
-def s3_complete_clip_exists(clip_id):
-    """
-    S3에 clip_id 폴더가 존재하고, mp4, mp3, json 파일이 모두 있을 경우 True
-    그렇지 않으면 False (즉, 덮어쓰기 대상)
-    """
-    prefix = f"{S3_PREFIX}/{clip_id}/"
-    required_exts = {".mp4", ".mp3", ".json"}
-
-    paginator = s3.get_paginator('list_objects_v2')
-    pages = paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix)
-
-    existing_exts = set()
-    for page in pages:
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            _, filename = key.rsplit("/", 1)
-            _, ext = os.path.splitext(filename)
-            existing_exts.add(ext.lower())
-
-    return required_exts.issubset(existing_exts)
-
-def upload_to_s3(local_path, s3_key):
-    try:
-        s3.upload_file(local_path, S3_BUCKET, s3_key)
-        return True
-    except Exception as e:
-        print(f"❌ S3 업로드 실패: {s3_key}, 사유: {e}")
-        return False
-
-def upload_clip_folder(clip_id):
-    local_dir = os.path.join(DOWNLOAD_DIR, clip_id)
-    if not os.path.exists(local_dir):
-        return False
-
-    # ✅ S3에 완전한 클립이 존재하면 스킵
-    if s3_complete_clip_exists(clip_id):
-        print(f"🚫 S3에 완전한 클립이 이미 존재함 → 스킵: {clip_id}")
-        log_completed(clip_id)  # ✅ 누락 방지!
-        return True
-
-    print(f"⏫ 업로드 시작: {clip_id}")
-    success = True
-    for fname in os.listdir(local_dir):
-        local_path = os.path.join(local_dir, fname)
-        s3_key = f"{S3_PREFIX}/{clip_id}/{fname}"
-        if not upload_to_s3(local_path, s3_key):
-            success = False
-
-    if not success:
-        log_upload_failed(clip_id)
-
-    return success
 
 def download_and_upload(video_id):
     # # We already checked this in the main function
