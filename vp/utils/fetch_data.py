@@ -2,7 +2,7 @@ import os
 from tqdm import tqdm
 import boto3
 
-from ...configs.constants import *
+from vp.configs.constants import *
 
 s3 = boto3.client("s3")
 
@@ -20,21 +20,12 @@ def load_completed_ids():
             return set(line.strip() for line in f)
     return set()
 
-# FAILED_LOG txt file에 실패한 clip_id를 추가.
-def log_failed(clip_id, error_msg=""):
+def log_result(clip_id, logging_file_path, error_msg=None):
+    os.makedirs(os.path.dirname(logging_file_path), exist_ok=True)
     with open(FAILED_LOG, "a", encoding="utf-8") as f:
         f.write(f"{clip_id}\n")
-    print(f"[ERROR] {clip_id} 실패 기록됨. 사유: {error_msg}")
-
-# COMPLETED_LOG txt file에 성공한 clip_id를 추가.
-def log_completed(clip_id):
-    with open(COMPLETED_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{clip_id}\n")
-
-# UPLOAD_FAILED_LOG txt file에 크롤링은 성공했으나 업로드에 실패한 clip_id를 추가. (거의 발생하지 않음)
-def log_upload_failed(clip_id):
-    with open(UPLOAD_FAILED_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{clip_id}\n")
+    if error_msg is not None:
+        print(f"[ERROR] {clip_id} 실패 기록됨. 사유: {error_msg}")
 
 def s3_complete_clip_exists(clip_id):
     """

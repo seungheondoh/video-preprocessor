@@ -10,13 +10,12 @@ import time
 import random
 import boto3
 
-from utils.fetch_data import *
-from configs.constants import *
+from vp.utils.fetch_data import *
+from vp.configs.constants import *
 
 s3 = boto3.client("s3")
 
 # cookies file
-COOKIES_FILE_DIR = "./cookies"
 cur_cookie_index = Value('i', 0)  # shared integer
 
 def get_cookie_file_path():
@@ -94,7 +93,7 @@ def download_and_upload(video_info):
 
     except Exception as e:
         error_msg = str(e).lower()
-        log_failed(clip_id, error_msg)
+        log_result(clip_id, FAILED_LOG, error_msg)
         handle_error_message(error_msg, cookie_fn)
 
         # 일반 실패 시 클린업
@@ -106,7 +105,7 @@ def download_and_upload(video_info):
         extract_audio(mp4_path, mp3_path)
         
     if not (os.path.exists(mp4_path) and os.path.exists(mp3_path) and os.path.exists(json_path)):
-        log_failed(clip_id, "다운로드된 파일 없음")
+        log_result(clip_id, FAILED_LOG, "다운로드된 파일 없음")
         if os.path.exists(video_dir):
             shutil.rmtree(video_dir)
         return False
@@ -114,7 +113,7 @@ def download_and_upload(video_info):
     # ✅ S3 업로드
     if upload_clip_folder(clip_id):
         shutil.rmtree(video_dir)
-        log_completed(clip_id)
+        log_result(clip_id, COMPLETED_LOG)
         print(f"업로드 성공: {clip_id}")
         return True
     else:
