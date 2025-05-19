@@ -5,7 +5,7 @@ import json
 import shutil
 import subprocess
 from tqdm import tqdm
-from multiprocessing import Pool
+from multiprocessing import Pool, Value
 import time
 import random
 import boto3
@@ -24,6 +24,25 @@ S3_PREFIX = "chopin16" #"minhee_crawling"
 NUM_WORKERS = 16 # 8
 
 s3 = boto3.client("s3")
+
+# cookies file
+COOKIES_FILE_DIR = "./cookies"
+cur_cookie_index = Value('i', 0)  # shared integer
+
+def get_cookie_file_path():
+    cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')] + ['default.txt']
+    cur_cookie_index.value = cur_cookie_index.value % len(cookie_file_names)  # Ensure index is within bounds
+    cookie_file_name = cookie_file_names[cur_cookie_index.value]
+    cookie_file_path = os.path.join(COOKIES_FILE_DIR, cookie_file_name)
+    return cookie_file_path
+
+def handle_error_message(error_message, used_cookie_fn) -> None:
+    if "not a bot" in error_message or "rate-limited" in error_message:
+        with cur_cookie_index.get_lock():  # Lock ensures atomic update
+            if get_cookie_file_path() != used_cookie_fn: # check if is already changed
+                return
+            cur_cookie_index.value += 1
+            print(f"🔄 쿠키 파일 변경: {get_cookie_file_path()}")
 
 def extract_audio(mp4_path, mp3_path):
     cmd = [
@@ -57,13 +76,14 @@ def download_and_upload(video_info):
     start_sec = start_frame / fps
     end_sec = end_frame / fps
 
+    cookie_fn = get_cookie_file_path()
     try:
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
-            'ignoreerrors': True,
-            'cookiefile': './cookies.txt',
+            'ignoreerrors': False, # Changed to False so that the exception is raised
+            'cookiefile': cookie_fn,
             'outtmpl': mp4_path_template,
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
             'merge_output_format': 'mp4',
@@ -85,6 +105,7 @@ def download_and_upload(video_info):
     except Exception as e:
         error_msg = str(e).lower()
         log_failed(clip_id, error_msg)
+        handle_error_message(error_msg, cookie_fn)
 
         # 일반 실패 시 클린업
         if os.path.exists(video_dir):
