@@ -26,7 +26,7 @@ setup(
     author="Seungheon Doh",
     author_email="seungheon.doh@gmail.com",
     description="A video preprocessing toolkit for machine learning applications",
-    long_description=open("README.md", "r").read() if open("README.md", "r") else "",
+    long_description=open("readme.md", "r").read() if open("readme.md", "r") else "",
     long_description_content_type="text/markdown",
     url="https://github.com/seungheondoh/video-preprocessor",
     classifiers=[
