@@ -34,7 +34,6 @@ def extract_audio(mp4_path, mp3_path):
     ]
     subprocess.run(cmd, check=True)
 
-
 def download_and_upload(video_info):
     video_id = video_info['video_id']
     clip_id = video_info['clip_id']
@@ -83,25 +82,6 @@ def download_and_upload(video_info):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
 
-        if os.path.exists(mp4_path):
-            extract_audio(mp4_path, mp3_path)
-            
-        if not (os.path.exists(mp4_path) and os.path.exists(mp3_path) and os.path.exists(json_path)):
-            log_failed(clip_id, "다운로드된 파일 없음")
-            if os.path.exists(video_dir):
-                shutil.rmtree(video_dir)
-            return False
-
-        # ✅ S3 업로드
-        if upload_clip_folder(clip_id):
-            shutil.rmtree(video_dir)
-            log_completed(clip_id)
-            print(f"업로드 성공: {clip_id}")
-            return True
-        else:
-            print(f"❌ S3 업로드 실패: {clip_id}")
-            return False
-
     except Exception as e:
         error_msg = str(e).lower()
         log_failed(clip_id, error_msg)
@@ -110,6 +90,26 @@ def download_and_upload(video_info):
         if os.path.exists(video_dir):
             shutil.rmtree(video_dir)
         return False
+    
+    if os.path.exists(mp4_path):
+        extract_audio(mp4_path, mp3_path)
+        
+    if not (os.path.exists(mp4_path) and os.path.exists(mp3_path) and os.path.exists(json_path)):
+        log_failed(clip_id, "다운로드된 파일 없음")
+        if os.path.exists(video_dir):
+            shutil.rmtree(video_dir)
+        return False
+
+    # ✅ S3 업로드
+    if upload_clip_folder(clip_id):
+        shutil.rmtree(video_dir)
+        log_completed(clip_id)
+        print(f"업로드 성공: {clip_id}")
+        return True
+    else:
+        print(f"❌ S3 업로드 실패: {clip_id}")
+        return False
+
 
 if __name__ == '__main__':
     with open(JSON_PATH, "r", encoding="utf-8") as f:
