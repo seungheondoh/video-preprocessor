@@ -1,13 +1,5 @@
-import yt_dlp
-from yt_dlp.utils import download_range_func
 import os
-import json
-import shutil
-import subprocess
 from tqdm import tqdm
-from multiprocessing import Pool
-import time
-import random
 import boto3
 
 # 기본 설정
