@@ -34,3 +34,8 @@ crawl_s3_clips_from_file(
     mode="all"  # "mp4", "mp3", "json" 도 가능
 )
 ```
+
+# Setting Personal Config
+1. Copy the template file ```configs/user_config_template.py``` and rename it to ```configs/user_config.py```.
+2. Open ```configs/user_config.py``` and fill in the appropriate values based on your local environment.
+   - **Note:** This file is gitignored and will not be committed to the repository.
