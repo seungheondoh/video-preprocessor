@@ -26,6 +26,3 @@ COMPLETED_LOG = f"{LOG_DIR}/complete_clip_ids.txt"
 
 # S3
 S3_BUCKET = "maclab-youtube-crawl"
-
-if __name__=='__main__':
-    print(_PATH_TO_PROJECT_ROOT)
