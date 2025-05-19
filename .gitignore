@@ -2,7 +2,7 @@
 vp/configs/user_config.py
 
 # Ignore cookies directory
-cookies/
+vp/crawling/cookies/
 
 # Ignore virtual env
 venv/
