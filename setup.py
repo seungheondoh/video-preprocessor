@@ -17,11 +17,14 @@ setup(
         "scipy",
         "ffmpeg", # 안될 경우 "ffmpeg-python"을 사용하거나 sudo apt install ffmpeg로 설치.
         "yt-dlp",
+        "torchlibrosa==0.1.0",
+        "librosa",
+        "julius",
     ],
     entry_points={
         "console_scripts": [
             "vp=vp.cli:main",
-        ],  
+        ],
     },
     author="Seungheon Doh",
     author_email="seungheon.doh@gmail.com",
