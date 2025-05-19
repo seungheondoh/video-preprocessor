@@ -7,16 +7,9 @@ from vp.configs.constants import *
 s3 = boto3.client("s3")
 
 # FAILED_LOG txt file에 있는 이미 실패한 clip_id를 가져와서 다시 실행하지 않도록 함.
-def load_failed_ids():
-    if os.path.exists(FAILED_LOG):
-        with open(FAILED_LOG, "r", encoding="utf-8") as f:
-            return set(line.strip() for line in f)
-    return set()
-
-# COMPLETED_LOG txt file에 있는 이미 성공한 clip_id를 가져와서 다시 실행하지 않도록 함.
-def load_completed_ids():
-    if os.path.exists(COMPLETED_LOG):
-        with open(COMPLETED_LOG, "r", encoding="utf-8") as f:
+def load_ids(log_file_path):
+    if os.path.exists(log_file_path):
+        with open(log_file_path, "r", encoding="utf-8") as f:
             return set(line.strip() for line in f)
     return set()
 

@@ -125,8 +125,8 @@ if __name__ == '__main__':
     with open(JSON_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    failed_ids = load_failed_ids()
-    completed_ids = load_completed_ids()
+    failed_ids = load_ids(FAILED_LOG)
+    completed_ids = load_ids(COMPLETED_LOG)
     data = [item for item in data if item['clip_id'] not in failed_ids and item['clip_id'] not in completed_ids]
 
     print(f"🔍 처리할 clip_id 수: {len(data)}")
