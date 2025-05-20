@@ -1,57 +1,24 @@
-import yt_dlp
-from yt_dlp.utils import download_range_func
 import os
-import json
-import shutil
-import subprocess
 from tqdm import tqdm
-from multiprocessing import Pool
-import time
-import random
 import boto3
 
-# 기본 설정
-FAILED_LOG = "failed_ids_clip.txt"
-UPLOAD_FAILED_LOG = "upload_failed_ids.txt"
-COMPLETED_LOG = "complete_clip_ids.txt"
-DOWNLOAD_DIR = "/mnt/hdd8tb/downloads_clip"
-JSON_PATH = "MMTrail2M_uncrawled_part1.json"
-
-S3_BUCKET = "maclab-youtube-crawl"
-S3_PREFIX = "chopin16"
-NUM_WORKERS = 16
+from vp.configs.constants import *
 
 s3 = boto3.client("s3")
 
 # FAILED_LOG txt file에 있는 이미 실패한 clip_id를 가져와서 다시 실행하지 않도록 함.
-def load_failed_ids():
-    if os.path.exists(FAILED_LOG):
-        with open(FAILED_LOG, "r", encoding="utf-8") as f:
+def load_ids(log_file_path):
+    if os.path.exists(log_file_path):
+        with open(log_file_path, "r", encoding="utf-8") as f:
             return set(line.strip() for line in f)
     return set()
 
-# COMPLETED_LOG txt file에 있는 이미 성공한 clip_id를 가져와서 다시 실행하지 않도록 함.
-def load_completed_ids():
-    if os.path.exists(COMPLETED_LOG):
-        with open(COMPLETED_LOG, "r", encoding="utf-8") as f:
-            return set(line.strip() for line in f)
-    return set()
-
-# FAILED_LOG txt file에 실패한 clip_id를 추가.
-def log_failed(clip_id, error_msg=""):
+def log_result(clip_id, logging_file_path, error_msg=None):
+    os.makedirs(os.path.dirname(logging_file_path), exist_ok=True)
     with open(FAILED_LOG, "a", encoding="utf-8") as f:
         f.write(f"{clip_id}\n")
-    print(f"[ERROR] {clip_id} 실패 기록됨. 사유: {error_msg}")
-
-# COMPLETED_LOG txt file에 성공한 clip_id를 추가.
-def log_completed(clip_id):
-    with open(COMPLETED_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{clip_id}\n")
-
-# UPLOAD_FAILED_LOG txt file에 크롤링은 성공했으나 업로드에 실패한 clip_id를 추가. (거의 발생하지 않음)
-def log_upload_failed(clip_id):
-    with open(UPLOAD_FAILED_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{clip_id}\n")
+    if error_msg is not None:
+        print(f"[ERROR] {clip_id} 실패 기록됨. 사유: {error_msg}")
 
 def s3_complete_clip_exists(clip_id):
     """
