@@ -1,3 +1,6 @@
+##################################################################
+# 비디오 크롤링 -> 로컬 임시 저장 -> S3 업로드를 한번에 실행하는 코드. 
+##################################################################
 import yt_dlp
 from yt_dlp.utils import download_range_func
 import os
@@ -10,43 +13,11 @@ import time
 import random
 import boto3
 
-# 기본 설정
-FAILED_LOG = "failed_ids_clip.txt"
-UPLOAD_FAILED_LOG = "upload_failed_ids.txt"
-COMPLETED_LOG = "complete_clip_ids.txt"
-DOWNLOAD_DIR = "/mnt/hdd8tb/downloads_clip"
-JSON_PATH = "MMTrail2M_uncrawled_part1.json"
+from vp.utils.fetch_data import *
 
-S3_BUCKET = "maclab-youtube-crawl"
-S3_PREFIX = "chopin16" #"minhee_crawling"
-NUM_WORKERS = 16 # 8
+DOWNLOAD_DIR = "/mnt/hdd8tb/downloads_clip"
 
 s3 = boto3.client("s3")
-
-def load_failed_ids():
-    if os.path.exists(FAILED_LOG):
-        with open(FAILED_LOG, "r", encoding="utf-8") as f:
-            return set(line.strip() for line in f)
-    return set()
-
-def load_completed_ids():
-    if os.path.exists(COMPLETED_LOG):
-        with open(COMPLETED_LOG, "r", encoding="utf-8") as f:
-            return set(line.strip() for line in f)
-    return set()
-
-def log_failed(clip_id, error_msg=""):
-    with open(FAILED_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{clip_id}\n")
-    print(f"[ERROR] {clip_id} 실패 기록됨. 사유: {error_msg}")
-
-def log_completed(clip_id):
-    with open(COMPLETED_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{clip_id}\n")
-
-def log_upload_failed(clip_id):
-    with open(UPLOAD_FAILED_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{clip_id}\n")
 
 def extract_audio(mp4_path, mp3_path):
     cmd = [
@@ -57,59 +28,7 @@ def extract_audio(mp4_path, mp3_path):
     ]
     subprocess.run(cmd, check=True)
 
-def s3_complete_clip_exists(clip_id):
-    """
-    S3에 clip_id 폴더가 존재하고, mp4, mp3, json 파일이 모두 있을 경우 True
-    그렇지 않으면 False (즉, 덮어쓰기 대상)
-    """
-    prefix = f"{S3_PREFIX}/{clip_id}/"
-    required_exts = {".mp4", ".mp3", ".json"}
-
-    paginator = s3.get_paginator('list_objects_v2')
-    pages = paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix)
-
-    existing_exts = set()
-    for page in pages:
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            _, filename = key.rsplit("/", 1)
-            _, ext = os.path.splitext(filename)
-            existing_exts.add(ext.lower())
-
-    return required_exts.issubset(existing_exts)
-
-def upload_to_s3(local_path, s3_key):
-    try:
-        s3.upload_file(local_path, S3_BUCKET, s3_key)
-        return True
-    except Exception as e:
-        print(f"❌ S3 업로드 실패: {s3_key}, 사유: {e}")
-        return False
-
-def upload_clip_folder(clip_id):
-    local_dir = os.path.join(DOWNLOAD_DIR, clip_id)
-    if not os.path.exists(local_dir):
-        return False
-
-    # ✅ S3에 완전한 클립이 존재하면 스킵
-    if s3_complete_clip_exists(clip_id):
-        print(f"🚫 S3에 완전한 클립이 이미 존재함 → 스킵: {clip_id}")
-        log_completed(clip_id)  # ✅ 누락 방지!
-        return True
-
-    print(f"⏫ 업로드 시작: {clip_id}")
-    success = True
-    for fname in os.listdir(local_dir):
-        local_path = os.path.join(local_dir, fname)
-        s3_key = f"{S3_PREFIX}/{clip_id}/{fname}"
-        if not upload_to_s3(local_path, s3_key):
-            success = False
-
-    if not success:
-        log_upload_failed(clip_id)
-
-    return success
-
+# 크롤링 및 업로드를 실행하는 메인 함수.
 def download_and_upload(video_info):
     video_id = video_info['video_id']
     clip_id = video_info['clip_id']
@@ -171,7 +90,6 @@ def download_and_upload(video_info):
         if upload_clip_folder(clip_id):
             shutil.rmtree(video_dir)
             log_completed(clip_id)
-            print(f"업로드 성공: {clip_id}")
             return True
         else:
             print(f"❌ S3 업로드 실패: {clip_id}")
@@ -186,6 +104,7 @@ def download_and_upload(video_info):
             shutil.rmtree(video_dir)
         return False
 
+# 병렬처리로 크롤링, 업로드 진행.
 if __name__ == '__main__':
     with open(JSON_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -200,3 +119,4 @@ if __name__ == '__main__':
         with tqdm(total=len(data), desc="다운로드 및 업로드 진행") as pbar:
             for result in pool.imap_unordered(download_and_upload, data):
                 pbar.update(1)
+
