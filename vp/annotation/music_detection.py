@@ -7,7 +7,7 @@ import julius
 import numpy as np
 from vp.annotation.modules.panns import MUSIC_INDEX
 
-DURATION = 10
+DURATION = 3
 def convert_audio(wav, original_rate, target_rate):
     if original_rate != target_rate:
         wav = julius.resample_frac(wav, original_rate, target_rate)
@@ -32,7 +32,7 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
             dst=model_path
         )
     model = Cnn14(
-        sample_rate=32000,
+        sample_rate=sample_rate,
         window_size=1024,
         hop_size=320,
         mel_bins=64,
@@ -57,8 +57,8 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
             "offset": (idx + 1) * DURATION,
             "music_logit": float(logit)
         })
-    audio_path = audio_path.split("/")[-1].replace(".mp3", ".json")
-    with open(os.path.join(output_dir, audio_path), "w") as f:
+    results_path = audio_path.split("/")[-1].replace(".mp3", ".json")
+    with open(os.path.join(output_dir, results_path), "w") as f:
         json.dump(results, f)
 
 
