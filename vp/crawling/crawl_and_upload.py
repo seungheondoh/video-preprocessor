@@ -43,8 +43,9 @@ def extract_audio(mp4_path, mp3_path):
     subprocess.run(cmd, check=True)
 
 def download_and_upload(video_info):
+    is_clip = 'clip_id' in video_info.keys()
     video_id = video_info['video_id']
-    clip_id = video_info['clip_id']
+    clip_id = video_info['clip_id'] if is_clip else video_id
 
     if clip_id in failed_ids or clip_id in completed_ids:
         return False
@@ -59,11 +60,15 @@ def download_and_upload(video_info):
     mp4_path = os.path.join(video_dir, f"{clip_id}.mp4")
     mp3_path = os.path.join(video_dir, f"{clip_id}_audio.mp3")
     json_path = os.path.join(video_dir, f"{clip_id}.info.json")
-
-    start_frame, end_frame = video_info['clip_start_end_idx']
-    fps = video_info['video_fps']
-    start_sec = start_frame / fps
-    end_sec = end_frame / fps
+    
+    if is_clip:
+        assert 'clip_start_end_idx' in video_info.keys(), "'clip_start_end_index is not in video_info.keys()"
+        start_frame, end_frame = video_info['clip_start_end_idx']
+        fps = video_info['video_fps'] if 'video_fps' in video_info.keys() else video_info['fps']
+        start_sec = start_frame / fps
+        end_sec = end_frame / fps
+    else:
+        start_sec, end_sec = (0, video_info['duration'])
 
     cookie_fn = get_cookie_file_path()
     try:
@@ -71,7 +76,7 @@ def download_and_upload(video_info):
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
-            'ignoreerrors': False, # Changed to False so that the exception is raised
+            'ignoreerrors': False, # Changed to False so that the exception is handled
             'cookiefile': cookie_fn,
             'outtmpl': mp4_path_template,
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
@@ -101,14 +106,19 @@ def download_and_upload(video_info):
             shutil.rmtree(video_dir)
         return False
     
+    # Extract Audio
     if os.path.exists(mp4_path):
         extract_audio(mp4_path, mp3_path)
-        
+    
+    # Check whether video, audio, and metadata all exist.
     if not (os.path.exists(mp4_path) and os.path.exists(mp3_path) and os.path.exists(json_path)):
         log_result(clip_id, FAILED_LOG, "다운로드된 파일 없음")
         if os.path.exists(video_dir):
             shutil.rmtree(video_dir)
         return False
+    
+    # Segment into clips if current video is a whole video, not a clip.
+    
 
     # ✅ S3 업로드
     if upload_clip_folder(clip_id):
