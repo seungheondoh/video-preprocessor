@@ -7,7 +7,7 @@ import julius
 import numpy as np
 from vp.annotation.modules.panns import MUSIC_INDEX
 
-DURATION = 3
+DURATION = 15
 def convert_audio(wav, original_rate, target_rate):
     if original_rate != target_rate:
         wav = julius.resample_frac(wav, original_rate, target_rate)
@@ -59,14 +59,15 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
         })
     results_path = audio_path.split("/")[-1].replace(".mp3", ".json")
     with open(os.path.join(output_dir, results_path), "w") as f:
-        json.dump(results, f)
+        json.dump(results, f, indent=4)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--audio_path", type=str, default="data/audio/18500.mp3")
-    parser.add_argument("--audio_dir", type=str, default="data/audio")
-    parser.add_argument("--output_dir", type=str, default="data/annotation/music_detection")
+    PROJECT_ROOT = "/home/minhee/video-preprocessor"
+    parser.add_argument("--audio_path", type=str, default=f"{PROJECT_ROOT}/NzyfO7qT6bI_audio.mp3")
+    parser.add_argument("--audio_dir", type=str, default=f"{PROJECT_ROOT}")
+    parser.add_argument("--output_dir", type=str, default=f"{PROJECT_ROOT}")
     parser.add_argument("--ckpt_dir", type=str, default="ckpt")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--sample_rate", type=int, default=32000)

@@ -7,5 +7,11 @@ vp/crawling/cookies/
 # Ignore virtual env
 venv/
 
+# Ignore ckpt directory
+ckpt/
+
+# (temp) Ignore json file
+MMTrail2M_sample1w.json
+
 *__pycache__
 video_preprocessor.egg-info/
