@@ -59,7 +59,7 @@ def upload_clip_folder(clip_id):
     # ✅ S3에 완전한 클립이 존재하면 스킵
     if s3_complete_clip_exists(clip_id):
         print(f"🚫 S3에 완전한 클립이 이미 존재함 → 스킵: {clip_id}")
-        log_completed(clip_id) 
+        # log_completed(clip_id) # TODO(minhee): Hided this line to avoid duplicate logging
         return True
 
     print(f"⏫ 업로드 시작: {clip_id}")
@@ -71,7 +71,7 @@ def upload_clip_folder(clip_id):
             success = False
 
     if not success:
-        log_upload_failed(clip_id)
+        log_result(clip_id, UPLOAD_FAILED_LOG)
 
     return success
 
