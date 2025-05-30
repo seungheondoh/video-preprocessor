@@ -106,6 +106,14 @@ class Crawler:
             log_result(clip_id, FAILED_LOG, "다운로드된 파일 없음")
             shutil.rmtree(clip_dir, ignore_errors=True)
             return False
+        
+        # Change file name
+        new_mp4_path = os.path.join(clip_dir, f"{clip_id}_video.mp4")
+        new_mp3_path = os.path.join(clip_dir, f"{clip_id}_audio.mp3")
+        new_json_path = os.path.join(clip_dir, f"{clip_id}_metadata.json")
+        os.rename(mp4_path, new_mp4_path)
+        os.rename(mp3_path, new_mp3_path)
+        os.rename(json_path, new_json_path)
 
         return True
 
