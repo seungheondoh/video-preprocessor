@@ -18,6 +18,7 @@ _PATH_TO_VP_CRAWLING = f"{_PATH_TO_PROJECT_ROOT}/vp/crawling"
 # Directory
 LOG_DIR = f"{_PATH_TO_VP_CRAWLING}/logs"
 COOKIES_FILE_DIR = f"{_PATH_TO_VP_CRAWLING}/cookies"
+CKPT_DIR = f"{_PATH_TO_PROJECT_ROOT}/ckpt"
 
 # Log file path
 FAILED_LOG = f"{LOG_DIR}/failed_ids_clip.txt"
