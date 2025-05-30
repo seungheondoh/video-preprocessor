@@ -15,7 +15,7 @@ def load_ids(log_file_path):
 
 def log_result(clip_id, logging_file_path, error_msg=None):
     os.makedirs(os.path.dirname(logging_file_path), exist_ok=True)
-    with open(FAILED_LOG, "a", encoding="utf-8") as f:
+    with open(logging_file_path, "a", encoding="utf-8") as f:
         f.write(f"{clip_id}\n")
     if error_msg is not None:
         print(f"[ERROR] {clip_id} 실패 기록됨. 사유: {error_msg}")
@@ -59,7 +59,7 @@ def upload_clip_folder(clip_id):
     # ✅ S3에 완전한 클립이 존재하면 스킵
     if s3_complete_clip_exists(clip_id):
         print(f"🚫 S3에 완전한 클립이 이미 존재함 → 스킵: {clip_id}")
-        # log_completed(clip_id) # TODO(minhee): Hided this line to avoid duplicate logging
+        log_result(clip_id, COMPLETED_LOG)
         return True
 
     print(f"⏫ 업로드 시작: {clip_id}")

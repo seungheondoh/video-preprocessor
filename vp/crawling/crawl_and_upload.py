@@ -44,12 +44,12 @@ class YTCrawler:
                 cur_cookie_index.value += 1
                 print(f"🔄 쿠키 파일 변경: {self.get_cookie_file_path()}")
 
-    def download_and_upload(self, args):
+    def download_clip(self, args):
         video_id, clip_id, start_sec, end_sec = args
         if clip_id in failed_ids or clip_id in completed_ids:
             return False
 
-        clip_dir = os.path.join(DOWNLOAD_DIR, clip_id)
+        clip_dir = self.get_clip_dir(clip_id)
 
         if os.path.exists(clip_dir):
             shutil.rmtree(clip_dir)
@@ -105,7 +105,11 @@ class YTCrawler:
             if os.path.exists(clip_dir):
                 shutil.rmtree(clip_dir)
             return False
+        return True
 
+    def s3_upload(self, video_info):
+        _, clip_id, _, _ = video_info
+        clip_dir = self.get_clip_dir(clip_id)
         # ✅ S3 업로드
         if upload_clip_folder(clip_id):
             shutil.rmtree(clip_dir)
@@ -116,11 +120,19 @@ class YTCrawler:
             print(f"❌ S3 업로드 실패: {clip_id}")
             return False
         
-def refine_video_info_for_mmtrailer(video_info):
-    video_id = video_info['video_id']
-    clip_id = video_info['clip_id']
-    start_frame, end_frame = video_info['clip_start_end_idx']
-    fps = video_info['video_fps']
+    def get_clip_dir(self, clip_id):
+        return os.path.join(DOWNLOAD_DIR, clip_id)
+    
+    def run(self, video_info):
+        if self.download_clip(video_info):
+            return self.s3_upload(video_info)
+        return False
+        
+def refine_item_for_mmtrailer(item):
+    video_id = item['video_id']
+    clip_id = item['clip_id']
+    start_frame, end_frame = item['clip_start_end_idx']
+    fps = item['video_fps']
     start_sec = start_frame / fps
     end_sec = end_frame / fps
     
@@ -134,12 +146,12 @@ if __name__ == '__main__':
     failed_ids = load_ids(FAILED_LOG)
     completed_ids = load_ids(COMPLETED_LOG)
     data = [item for item in data if item['clip_id'] not in failed_ids and item['clip_id'] not in completed_ids]
-    data = [refine_video_info_for_mmtrailer(item) for item in data]
+    data = [refine_item_for_mmtrailer(item) for item in data]
 
     print(f"🔍 처리할 clip_id 수: {len(data)}")
 
     crawler = YTCrawler()
     with Pool(NUM_WORKERS) as pool:
         with tqdm(total=len(data), desc="다운로드 및 업로드 진행") as pbar:
-            for result in pool.imap_unordered(crawler.download_and_upload, data):
+            for result in pool.imap_unordered(crawler.run, data):
                 pbar.update(1)
