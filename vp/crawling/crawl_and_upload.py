@@ -44,10 +44,8 @@ class YTCrawler:
                 cur_cookie_index.value += 1
                 print(f"🔄 쿠키 파일 변경: {self.get_cookie_file_path()}")
 
-    def download_and_upload(self, video_info):
-        video_id = video_info['video_id']
-        clip_id = video_info['clip_id']
-
+    def download_and_upload(self, args):
+        video_id, clip_id, start_sec, end_sec = args
         if clip_id in failed_ids or clip_id in completed_ids:
             return False
 
@@ -62,11 +60,6 @@ class YTCrawler:
         mp3_path = os.path.join(video_dir, f"{clip_id}_audio.mp3")
         json_path = os.path.join(video_dir, f"{clip_id}.info.json")
 
-        start_frame, end_frame = video_info['clip_start_end_idx']
-        fps = video_info['video_fps']
-        start_sec = start_frame / fps
-        end_sec = end_frame / fps
-
         cookie_fn = self.get_cookie_file_path()
         try:
             ydl_opts = {
@@ -80,9 +73,10 @@ class YTCrawler:
                 'merge_output_format': 'mp4',
                 'writeinfojson': True,
                 'force_keyframes_at_cuts': True,
-                'download_ranges': download_range_func(None, [(start_sec, end_sec)]),
                 'postprocessors': [],
             }
+            if start_sec is not None and end_sec is not None:
+                ydl_opts['download_ranges'] = download_range_func(None, [(start_sec, end_sec)])
             
             # ✅ 랜덤한 시간 지연 추가 (0.5초 ~ 1.5초)
             sleep_time = random.uniform(0.5, 1.5)
@@ -121,7 +115,17 @@ class YTCrawler:
         else:
             print(f"❌ S3 업로드 실패: {clip_id}")
             return False
-
+        
+def refine_video_info_for_mmtrailer(video_info):
+    video_id = video_info['video_id']
+    clip_id = video_info['clip_id']
+    start_frame, end_frame = video_info['clip_start_end_idx']
+    fps = video_info['video_fps']
+    start_sec = start_frame / fps
+    end_sec = end_frame / fps
+    
+    return (video_id, clip_id, start_sec, end_sec)
+    
 
 if __name__ == '__main__':
     with open(JSON_PATH, "r", encoding="utf-8") as f:
@@ -130,6 +134,7 @@ if __name__ == '__main__':
     failed_ids = load_ids(FAILED_LOG)
     completed_ids = load_ids(COMPLETED_LOG)
     data = [item for item in data if item['clip_id'] not in failed_ids and item['clip_id'] not in completed_ids]
+    data = [refine_video_info_for_mmtrailer(item) for item in data]
 
     print(f"🔍 처리할 clip_id 수: {len(data)}")
 
