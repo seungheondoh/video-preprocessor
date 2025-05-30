@@ -9,6 +9,8 @@ from multiprocessing import Pool, Value
 import time
 import random
 import boto3
+import argparse
+import pandas as pd
 
 from vp.utils.fetch_data import *
 from vp.configs.constants import *
@@ -25,9 +27,13 @@ def extract_audio(mp4_path, mp3_path):
     ]
     subprocess.run(cmd, check=True)
 
-class YTCrawler:
-    def __init__(self):
+class Crawler:
+    def __init__(self, dataset_path):
+        self._init_data(dataset_path)
         return
+    
+    def _init_data(self):
+        raise NotImplementedError("_init_data() must be implemented by subclasses")
     
     def get_cookie_file_path(self):
         cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')] + ['default.txt']
@@ -123,35 +129,62 @@ class YTCrawler:
     def get_clip_dir(self, clip_id):
         return os.path.join(DOWNLOAD_DIR, clip_id)
     
-    def run(self, video_info):
+    def run(self):
+        print(f"🔍 처리할 clip_id 수: {len(self.data)}")
+        with Pool(NUM_WORKERS) as pool:
+            with tqdm(total=len(self.data), desc="다운로드 및 업로드 진행") as pbar:
+                for result in pool.imap_unordered(crawler.process, self.data):
+                    pbar.update(1)
+    
+    def process(self, video_info):
+        raise NotImplementedError("process() must be implemented by subclasses")
+    
+class MMTrailerCrawler(Crawler):
+    def _init_data(self):
+        def refine_item_for_mmtrailer(item):
+            video_id = item['video_id']
+            clip_id = item['clip_id']
+            start_frame, end_frame = item['clip_start_end_idx']
+            fps = item['video_fps']
+            start_sec = start_frame / fps
+            end_sec = end_frame / fps
+            
+            return (video_id, clip_id, start_sec, end_sec)
+        
+        with open(JSON_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        failed_ids = load_ids(FAILED_LOG)
+        completed_ids = load_ids(COMPLETED_LOG)
+        data = [item for item in data if item['clip_id'] not in failed_ids and item['clip_id'] not in completed_ids]
+        self.data = [refine_item_for_mmtrailer(item) for item in data]
+        
+    def process(self, video_info):
         if self.download_clip(video_info):
             return self.s3_upload(video_info)
         return False
+    
+class YTCralwer(Crawler):
+    def _init_data(self, dataset_path):
+        df = pd.read_csv(VIDEO_CSV_PATH)
+        IDS_IN_MINHEE_CRAWLING_BUCKET = load_ids('/home/minhee/video-preprocessor/vp/crawling/logs/videos_in_s3.txt')
+        video_ids = list(set(df['video_id'].tolist()) - set(IDS_IN_MINHEE_CRAWLING_BUCKET))
         
-def refine_item_for_mmtrailer(item):
-    video_id = item['video_id']
-    clip_id = item['clip_id']
-    start_frame, end_frame = item['clip_start_end_idx']
-    fps = item['video_fps']
-    start_sec = start_frame / fps
-    end_sec = end_frame / fps
-    
-    return (video_id, clip_id, start_sec, end_sec)
-    
+    def process(self, video_info):
+        if self.download_clip(video_info):
+            return self.s3_upload(video_info)
+        return False
+
 
 if __name__ == '__main__':
-    with open(JSON_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    parser = argparse.ArgumentParser(description="YouTube Crawler")
+    parser.add_argument('--crawler', type=str, default='yt', choices=['yt', 'mmtrailer'], help='Crawler type to use')
+    args = parser.parse_args()
 
-    failed_ids = load_ids(FAILED_LOG)
-    completed_ids = load_ids(COMPLETED_LOG)
-    data = [item for item in data if item['clip_id'] not in failed_ids and item['clip_id'] not in completed_ids]
-    data = [refine_item_for_mmtrailer(item) for item in data]
-
-    print(f"🔍 처리할 clip_id 수: {len(data)}")
-
-    crawler = YTCrawler()
-    with Pool(NUM_WORKERS) as pool:
-        with tqdm(total=len(data), desc="다운로드 및 업로드 진행") as pbar:
-            for result in pool.imap_unordered(crawler.run, data):
-                pbar.update(1)
+    if args.crawler == 'mmtrailer':
+        crawler = MMTrailerCrawler()
+    elif args.crawler == 'yt':
+        crawler = Crawler()
+    else:
+        raise ValueError("Unsupported crawler type.")
+    crawler = Crawler()
