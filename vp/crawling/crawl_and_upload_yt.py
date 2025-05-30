@@ -1,3 +1,4 @@
+# TODO(minhee): Remove this file someday so that we don't keep multiple crawling scripts
 import yt_dlp
 from yt_dlp.utils import download_range_func
 import os
@@ -109,6 +110,10 @@ def download_and_upload(video_info):
         if os.path.exists(video_dir):
             shutil.rmtree(video_dir)
         return False
+    
+    # change file name
+    os.rename(mp4_path, os.path.join(video_dir, f"{clip_id}_video.mp4"))
+    os.rename(json_path, os.path.join(video_dir, f"{clip_id}_metadata.json"))
 
     # ✅ S3 업로드
     if upload_clip_folder(clip_id):
