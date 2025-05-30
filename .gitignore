@@ -7,5 +7,8 @@ vp/crawling/cookies/
 # Ignore virtual env
 venv/
 
+# Ignore ckpt directory
+ckpt/
+
 *__pycache__
 video_preprocessor.egg-info/
