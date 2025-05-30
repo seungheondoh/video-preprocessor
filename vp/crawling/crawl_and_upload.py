@@ -49,16 +49,16 @@ class YTCrawler:
         if clip_id in failed_ids or clip_id in completed_ids:
             return False
 
-        video_dir = os.path.join(DOWNLOAD_DIR, clip_id)
+        clip_dir = os.path.join(DOWNLOAD_DIR, clip_id)
 
-        if os.path.exists(video_dir):
-            shutil.rmtree(video_dir)
-        os.makedirs(video_dir, exist_ok=True)
+        if os.path.exists(clip_dir):
+            shutil.rmtree(clip_dir)
+        os.makedirs(clip_dir, exist_ok=True)
 
-        mp4_path_template = os.path.join(video_dir, f"{clip_id}.%(ext)s")
-        mp4_path = os.path.join(video_dir, f"{clip_id}.mp4")
-        mp3_path = os.path.join(video_dir, f"{clip_id}_audio.mp3")
-        json_path = os.path.join(video_dir, f"{clip_id}.info.json")
+        mp4_path_template = os.path.join(clip_dir, f"{clip_id}.%(ext)s")
+        mp4_path = os.path.join(clip_dir, f"{clip_id}.mp4")
+        mp3_path = os.path.join(clip_dir, f"{clip_id}_audio.mp3")
+        json_path = os.path.join(clip_dir, f"{clip_id}.info.json")
 
         cookie_fn = self.get_cookie_file_path()
         try:
@@ -93,8 +93,8 @@ class YTCrawler:
             self.handle_error_message(error_msg, cookie_fn)
 
             # 일반 실패 시 클린업
-            if os.path.exists(video_dir):
-                shutil.rmtree(video_dir)
+            if os.path.exists(clip_dir):
+                shutil.rmtree(clip_dir)
             return False
         
         if os.path.exists(mp4_path):
@@ -102,13 +102,13 @@ class YTCrawler:
             
         if not (os.path.exists(mp4_path) and os.path.exists(mp3_path) and os.path.exists(json_path)):
             log_result(clip_id, FAILED_LOG, "다운로드된 파일 없음")
-            if os.path.exists(video_dir):
-                shutil.rmtree(video_dir)
+            if os.path.exists(clip_dir):
+                shutil.rmtree(clip_dir)
             return False
 
         # ✅ S3 업로드
         if upload_clip_folder(clip_id):
-            shutil.rmtree(video_dir)
+            shutil.rmtree(clip_dir)
             log_result(clip_id, COMPLETED_LOG)
             print(f"업로드 성공: {clip_id}")
             return True
