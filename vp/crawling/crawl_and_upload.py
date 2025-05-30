@@ -4,19 +4,22 @@ import os
 import json
 import shutil
 import subprocess
-from tqdm import tqdm
-from multiprocessing import Pool, Value
 import time
 import random
-import boto3
 import argparse
 import pandas as pd
+from tqdm import tqdm
+from multiprocessing import Pool, Value, Lock
+
+import boto3
 
 from vp.utils.fetch_data import *
 from vp.configs.constants import *
 
 s3 = boto3.client("s3")
-cur_cookie_index = Value('i', 0)  # shared integer
+cur_cookie_index = Value('i', 0)
+cookie_lock = Lock()
+
 
 def extract_audio(mp4_path, mp3_path):
     cmd = [
@@ -27,54 +30,50 @@ def extract_audio(mp4_path, mp3_path):
     ]
     subprocess.run(cmd, check=True)
 
-class Crawler:
-    def __init__(self, dataset_path):
-        self._init_data(dataset_path)
-        return
-    
-    def _init_data(self):
-        raise NotImplementedError("_init_data() must be implemented by subclasses")
-    
-    def get_cookie_file_path(self):
-        cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')] + ['default.txt']
-        cur_cookie_index.value = cur_cookie_index.value % len(cookie_file_names)  # Ensure index is within bounds
-        cookie_file_name = cookie_file_names[cur_cookie_index.value]
-        cookie_file_path = os.path.join(COOKIES_FILE_DIR, cookie_file_name)
-        return cookie_file_path
 
-    def handle_error_message(self, error_message, used_cookie_fn) -> None:
+class Crawler:
+    def __init__(self, dataset_path=None):
+        self._init_data(dataset_path)
+
+    def _init_data(self, dataset_path):
+        raise NotImplementedError
+
+    def get_cookie_file_path(self):
+        with cookie_lock:
+            cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')] + ['default.txt']
+            cur_cookie_index.value %= len(cookie_file_names)
+            cookie_file_name = cookie_file_names[cur_cookie_index.value]
+            return os.path.join(COOKIES_FILE_DIR, cookie_file_name)
+
+    def handle_error_message(self, error_message, used_cookie_fn):
         if "not a bot" in error_message or "rate-limited" in error_message:
-            with cur_cookie_index.get_lock():  # Lock ensures atomic update
-                if self.get_cookie_file_path() != used_cookie_fn: # check if is already changed
-                    return
-                cur_cookie_index.value += 1
-                print(f"🔄 쿠키 파일 변경: {self.get_cookie_file_path()}")
+            with cookie_lock:
+                if self.get_cookie_file_path() == used_cookie_fn:
+                    cur_cookie_index.value += 1
+                    print(f"🔄 쿠키 파일 변경: {self.get_cookie_file_path()}")
 
     def download_clip(self, args):
         video_id, clip_id, start_sec, end_sec = args
-        if clip_id in failed_ids or clip_id in completed_ids:
-            return False
 
         clip_dir = self.get_clip_dir(clip_id)
-
-        if os.path.exists(clip_dir):
-            shutil.rmtree(clip_dir)
+        shutil.rmtree(clip_dir, ignore_errors=True)
         os.makedirs(clip_dir, exist_ok=True)
 
-        mp4_path_template = os.path.join(clip_dir, f"{clip_id}.%(ext)s")
         mp4_path = os.path.join(clip_dir, f"{clip_id}.mp4")
         mp3_path = os.path.join(clip_dir, f"{clip_id}_audio.mp3")
         json_path = os.path.join(clip_dir, f"{clip_id}.info.json")
+        mp4_template = os.path.join(clip_dir, f"{clip_id}.%(ext)s")
 
         cookie_fn = self.get_cookie_file_path()
+
         try:
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
                 'noplaylist': True,
-                'ignoreerrors': False, # Changed to False so that the exception is raised
+                'ignoreerrors': False,
                 'cookiefile': cookie_fn,
-                'outtmpl': mp4_path_template,
+                'outtmpl': mp4_template,
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
                 'merge_output_format': 'mp4',
                 'writeinfojson': True,
@@ -97,26 +96,22 @@ class Crawler:
             error_msg = str(e).lower()
             log_result(clip_id, FAILED_LOG, error_msg)
             self.handle_error_message(error_msg, cookie_fn)
-
-            # 일반 실패 시 클린업
-            if os.path.exists(clip_dir):
-                shutil.rmtree(clip_dir)
+            shutil.rmtree(clip_dir, ignore_errors=True)
             return False
-        
+
         if os.path.exists(mp4_path):
             extract_audio(mp4_path, mp3_path)
-            
+
         if not (os.path.exists(mp4_path) and os.path.exists(mp3_path) and os.path.exists(json_path)):
             log_result(clip_id, FAILED_LOG, "다운로드된 파일 없음")
-            if os.path.exists(clip_dir):
-                shutil.rmtree(clip_dir)
+            shutil.rmtree(clip_dir, ignore_errors=True)
             return False
+
         return True
 
     def s3_upload(self, video_info):
         _, clip_id, _, _ = video_info
         clip_dir = self.get_clip_dir(clip_id)
-        # ✅ S3 업로드
         if upload_clip_folder(clip_id):
             shutil.rmtree(clip_dir)
             log_result(clip_id, COMPLETED_LOG)
@@ -125,39 +120,41 @@ class Crawler:
         else:
             print(f"❌ S3 업로드 실패: {clip_id}")
             return False
-        
+
     def get_clip_dir(self, clip_id):
         return os.path.join(DOWNLOAD_DIR, clip_id)
-    
+
+    def process(self, video_info):
+        if self.download_clip(video_info):
+            return self.s3_upload(video_info)
+        return False
+
     def run(self):
         print(f"🔍 처리할 clip_id 수: {len(self.data)}")
         with Pool(NUM_WORKERS) as pool:
             with tqdm(total=len(self.data), desc="다운로드 및 업로드 진행") as pbar:
-                for result in pool.imap_unordered(crawler.process, self.data):
+                for _ in pool.imap_unordered(self.process, self.data):
                     pbar.update(1)
-    
+
     def process(self, video_info):
         raise NotImplementedError("process() must be implemented by subclasses")
-    
+
 class MMTrailerCrawler(Crawler):
-    def _init_data(self):
-        def refine_item_for_mmtrailer(item):
+    def _init_data(self, dataset_path):
+        def refine(item):
             video_id = item['video_id']
             clip_id = item['clip_id']
             start_frame, end_frame = item['clip_start_end_idx']
             fps = item['video_fps']
-            start_sec = start_frame / fps
-            end_sec = end_frame / fps
-            
-            return (video_id, clip_id, start_sec, end_sec)
-        
-        with open(JSON_PATH, "r", encoding="utf-8") as f:
+            return (video_id, clip_id, start_frame / fps, end_frame / fps)
+
+        with open(dataset_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        failed_ids = load_ids(FAILED_LOG)
-        completed_ids = load_ids(COMPLETED_LOG)
-        data = [item for item in data if item['clip_id'] not in failed_ids and item['clip_id'] not in completed_ids]
-        self.data = [refine_item_for_mmtrailer(item) for item in data]
+        failed = load_ids(FAILED_LOG)
+        completed = load_ids(COMPLETED_LOG)
+        filtered = [item for item in data if item['clip_id'] not in failed and item['clip_id'] not in completed]
+        self.data = [refine(item) for item in filtered]
         
     def process(self, video_info):
         if self.download_clip(video_info):
@@ -166,9 +163,10 @@ class MMTrailerCrawler(Crawler):
     
 class YTCralwer(Crawler):
     def _init_data(self, dataset_path):
-        df = pd.read_csv(VIDEO_CSV_PATH)
-        IDS_IN_MINHEE_CRAWLING_BUCKET = load_ids('/home/minhee/video-preprocessor/vp/crawling/logs/videos_in_s3.txt')
-        video_ids = list(set(df['video_id'].tolist()) - set(IDS_IN_MINHEE_CRAWLING_BUCKET))
+        df = pd.read_csv(dataset_path)
+        s3_logged = load_ids('/home/minhee/video-preprocessor/vp/crawling/logs/videos_in_s3.txt')
+        video_ids = list(set(df['video_id'].tolist()) - set(s3_logged))
+        self.data = [(vid, vid, None, None) for vid in video_ids]
         
     def process(self, video_info):
         if self.download_clip(video_info):
@@ -178,13 +176,12 @@ class YTCralwer(Crawler):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="YouTube Crawler")
-    parser.add_argument('--crawler', type=str, default='yt', choices=['yt', 'mmtrailer'], help='Crawler type to use')
+    parser.add_argument('--crawler', type=str, default='mmtrailer', choices=['mmtrailer', 'yt'])
     args = parser.parse_args()
 
     if args.crawler == 'mmtrailer':
-        crawler = MMTrailerCrawler()
-    elif args.crawler == 'yt':
-        crawler = Crawler()
+        crawler = MMTrailerCrawler(JSON_PATH)
     else:
-        raise ValueError("Unsupported crawler type.")
-    crawler = Crawler()
+        crawler = YTCralwer(YT_VIDEOS_PATH)
+
+    crawler.run()
