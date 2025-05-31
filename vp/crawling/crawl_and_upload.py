@@ -197,7 +197,6 @@ class YTCralwer(Crawler):
         self.data = [(vid, vid, None, None) for vid in video_ids]
         
     def get_music_onset_offset(self, video_id):
-        PADDING_SEC = 5
         clip_dir, _, mp3_path, _ = self.get_file_path(video_id)
         print(f"🔍 PANN 추론 시작: {video_id}")
         extract_pann_logits(audio_path=mp3_path,
@@ -218,7 +217,7 @@ class YTCralwer(Crawler):
             if binary[i]:
                 if start == -1:
                     start = logits[i]["onset"]
-                end = logits[i]["offset"] + PADDING_SEC
+                end = logits[i]["offset"]
             else:
                 if start != -1:
                     onset_offset_list.append((start, end))
@@ -227,7 +226,7 @@ class YTCralwer(Crawler):
             onset_offset_list.append((start, end))
             
         for i in range(len(onset_offset_list)):
-            onset_offset_list[i] = (max(0, onset_offset_list[i][0] - PADDING_SEC), onset_offset_list[i][1] + PADDING_SEC)
+            onset_offset_list[i] = (max(0, onset_offset_list[i][0] - CLIP_PADDING_SEC), onset_offset_list[i][1] + CLIP_PADDING_SEC)
             
         return onset_offset_list if onset_offset_list else None
 

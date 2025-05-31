@@ -37,3 +37,4 @@ S3_BUCKET = "maclab-youtube-crawl"
 
 # PANN inference result logit threshold
 MUSIC_LOGIT_THRESHOLD = 0.7
+CLIP_PADDING_SEC = 5
