@@ -36,6 +36,7 @@ COMPLETED_LOG = f"{LOG_DIR}/complete_clip_ids.txt"
 S3_BUCKET = "maclab-youtube-crawl"
 
 # Clipping after PANN inference
+PANN_CLIP_DURATION_SEC = 20
 MUSIC_LOGIT_THRESHOLD = 0.7
 CLIP_PADDING_SEC = 5
 MAX_CLIP_SEC = 30
