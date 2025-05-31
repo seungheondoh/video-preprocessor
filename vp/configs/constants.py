@@ -19,7 +19,7 @@ _PATH_TO_VP_CRAWLING = f"{_PATH_TO_PROJECT_ROOT}/vp/crawling"
 LOG_DIR = f"{_PATH_TO_VP_CRAWLING}/logs"
 COOKIES_FILE_DIR = f"{_PATH_TO_VP_CRAWLING}/cookies"
 CKPT_DIR = f"{_PATH_TO_PROJECT_ROOT}/ckpt"
-DAFTPUNK_DIR = "/media/daftpunk4/home/seungheon/gaudio/dataset"
+DAFTPUNK_DIR = "/media/daftpunk4/home/seungheon/gaudio/data"
 
 # Video List
 VIDEO_CSV_PATH = f'{DAFTPUNK_DIR}/db/videos.csv'
