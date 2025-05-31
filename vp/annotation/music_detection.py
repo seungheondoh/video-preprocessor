@@ -7,7 +7,7 @@ import julius
 import numpy as np
 from vp.annotation.modules.panns import MUSIC_INDEX
 
-DURATION = 3
+DURATION = 15
 def convert_audio(wav, original_rate, target_rate):
     if original_rate != target_rate:
         wav = julius.resample_frac(wav, original_rate, target_rate)
