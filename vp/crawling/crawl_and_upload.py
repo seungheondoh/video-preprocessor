@@ -181,17 +181,18 @@ class MMTrailerCrawler(Crawler):
     
 class YTCralwer(Crawler):
     def __init__(self, dataset_path):
+        self.clip_info_json_path = YT_CLIP_INFO_JSON_PATH
+        self.clip_info_list = []
         super().__init__(dataset_path=dataset_path)
-        self.new_dataset_list = []
     
     def _init_data(self, dataset_path):
         df = pd.read_csv(dataset_path)
         
         # Filter out already processed video_ids
-        self.new_dataset_json_path = "yt_dataset.json" # TODO(minhee): Change to a proper path
-        with open(self.new_dataset_json_path, 'r') as f:
-            existing_data = json.load(f)
-        existing_video_ids = {item['video_id'] for item in existing_data} if existing_data else set()
+        if os.path.exists(self.clip_info_json_path):
+            with open(self.clip_info_json_path, 'r') as f:
+                self.clip_info_list = json.load(f)
+        existing_video_ids = set(item['video_id'] for item in self.clip_info_list) if self.clip_info_list else set()
         video_ids = list(set(df['video_id'].tolist()) - existing_video_ids)
         self.data = [(vid, vid, None, None) for vid in video_ids]
 
@@ -245,14 +246,14 @@ class YTCralwer(Crawler):
                 "clip_id": new_clip_id,
                 "clip_start_end_sec": (clip_start, clip_end),
             }
-            self.new_dataset_list.append(dict_item)
+            self.clip_info_list.append(dict_item)
             
         # Cleanup original download
         shutil.rmtree(clip_dir)
         
         # Step 4: Save new dataset JSON
-        with open(self.new_dataset_json_path, 'w') as f:
-            json.dump(self.new_dataset_list, f)
+        with open(self.clip_info_json_path, 'w') as f:
+            json.dump(self.clip_info_list, f, indent=4)
         
         return True
     

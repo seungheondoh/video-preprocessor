@@ -19,6 +19,13 @@ _PATH_TO_VP_CRAWLING = f"{_PATH_TO_PROJECT_ROOT}/vp/crawling"
 LOG_DIR = f"{_PATH_TO_VP_CRAWLING}/logs"
 COOKIES_FILE_DIR = f"{_PATH_TO_VP_CRAWLING}/cookies"
 CKPT_DIR = f"{_PATH_TO_PROJECT_ROOT}/ckpt"
+DAFTPUNK_DIR = "/media/daftpunk4/home/seungheon/gaudio/dataset"
+
+# Video List
+VIDEO_CSV_PATH = f'{DAFTPUNK_DIR}/db/videos.csv'
+
+# Clip info
+YT_CLIP_INFO_JSON_PATH = f"{_PATH_TO_PROJECT_ROOT}/yt_dataset.json"
 
 # Log file path
 FAILED_LOG = f"{LOG_DIR}/failed_ids_clip.txt"
