@@ -231,7 +231,7 @@ class YTCralwer(Crawler):
         return onset_offset_list if onset_offset_list else None
 
     def process(self, video_info):
-        # Step 1: Download the full video
+        # Download the full video
         success = self.download_clip(video_info)
         if not success:
             return False
@@ -257,14 +257,14 @@ class YTCralwer(Crawler):
                 "clip_start_end_sec": (clip_start, clip_end),
             }
             self.clip_info_list.append(dict_item)
+        
+        # Save new dataset JSON
+        with open(self.clip_info_json_path, 'w') as f:
+            json.dump(self.clip_info_list, f, indent=4)
             
         # Cleanup original download
         clip_dir, _, _, _ = self.get_file_path(video_id)
         shutil.rmtree(clip_dir)
-        
-        # Step 4: Save new dataset JSON
-        with open(self.clip_info_json_path, 'w') as f:
-            json.dump(self.clip_info_list, f, indent=4)
         
         return True
     
@@ -304,7 +304,7 @@ class YTCralwer(Crawler):
             print(f"❌ Audio cutting failed for {original_id}: {e}")
             return
         
-        # Copy metadata
+        # metadata
         shutil.copy(json_path, new_json_path)
 
 
