@@ -91,7 +91,7 @@ class Crawler:
             print(f"[WAIT] {clip_id} 다운로드 전 대기 중... ({sleep_time:.2f}초)")
             time.sleep(sleep_time)
 
-            print(f">>> {clip_id} 다운로드 중... ({start_sec:.2f}s ~ {end_sec:.2f}s)")
+            print(f">>> {clip_id} 다운로드 중...")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
 
@@ -105,7 +105,7 @@ class Crawler:
         if os.path.exists(ytdlp_mp4_path):
             extract_audio(ytdlp_mp4_path, ytdlp_mp3_path)
 
-        if not (os.path.exists(ytdlp_mp4_path) and os.path.exists(ytdlp_mp3_path) and os.path.exists(json_path)):
+        if not (os.path.exists(ytdlp_mp4_path) and os.path.exists(ytdlp_mp3_path) and os.path.exists(ytdlp_json_path)):
             log_result(clip_id, FAILED_LOG, "다운로드된 파일 없음")
             shutil.rmtree(clip_dir, ignore_errors=True)
             return False
@@ -122,7 +122,7 @@ class Crawler:
             clip_id = video_info
         else:
             _, clip_id, _, _ = video_info
-        clip_dir = self.get_clip_dir(clip_id)
+        clip_dir, _, _, _ = self.get_file_path(clip_id)
         if upload_clip_folder(clip_id):
             shutil.rmtree(clip_dir)
             log_result(clip_id, COMPLETED_LOG)
@@ -186,23 +186,22 @@ class YTCralwer(Crawler):
     
     def _init_data(self, dataset_path):
         df = pd.read_csv(dataset_path)
-        s3_logged = load_ids('/home/minhee/video-preprocessor/vp/crawling/logs/videos_in_s3.txt')  # TODO(minhee): Remove hardcoded path
-        video_ids = list(set(df['video_id'].tolist()) - set(s3_logged))
+        # s3_logged = load_ids('/home/minhee/video-preprocessor/vp/crawling/logs/videos_in_s3.txt')  # TODO(minhee): Remove hardcoded path
+        # video_ids = list(set(df['video_id'].tolist()) - set(s3_logged))
+        video_ids = df['video_id'].tolist()
         self.data = [(vid, vid, None, None) for vid in video_ids]
 
     def process(self, video_info):
-        video_id, clip_id, _, _ = video_info
-
         # Step 1: Download the full video
-        clip_info = (video_id, clip_id, None, None)
-        success = self.download_clip(clip_info)
+        success = self.download_clip(video_info)
         if not success:
             return False
 
         # Step 2: Run PANN inference
-        clip_dir, mp4_path, mp3_path, _ = self.get_file_path(clip_id)
-        print(f"🔍 PANN 추론 시작: {clip_id}")
-        extract_pann_logits(mp3_path=mp3_path,
+        video_id = video_info[0]
+        clip_dir, _, mp3_path, _ = self.get_file_path(video_id)
+        print(f"🔍 PANN 추론 시작: {video_id}")
+        extract_pann_logits(audio_path=mp3_path,
                             output_dir=clip_dir,
                             ckpt_dir=CKPT_DIR)
         logit_path = os.path.join(clip_dir, os.path.basename(mp3_path).replace(".mp3", ".json"))
@@ -231,7 +230,7 @@ class YTCralwer(Crawler):
         # STEP 3–7: For each clip, extract and upload
         for idx, (clip_start, clip_end) in enumerate(clips):
             new_clip_id = f"{video_id}_{idx:07d}"
-            self.cut_clip(clip_id, clip_start, clip_end, new_clip_id)
+            self.cut_clip(video_id, clip_start, clip_end, new_clip_id)
 
             # Upload to S3
             self.s3_upload(new_clip_id)
@@ -257,21 +256,32 @@ class YTCralwer(Crawler):
         duration = end - start
         
         # video
-        command = [
-            "ffmpeg", "-y", "-ss", str(start), "-t", str(duration),
-            "-i", mp4_path, "-c:v", "libx264", "-c:a", "aac",
-            "-strict", "experimental", "-loglevel", "error",
-            new_mp4_path
-        ]
-        subprocess.run(command, check=True)
+        try:
+            command = [
+                "ffmpeg", "-y", "-ss", str(start), "-t", str(duration),
+                "-i", mp4_path, "-c:v", "libx264", "-c:a", "aac",
+                "-strict", "experimental", "-loglevel", "error",
+                new_mp4_path
+            ]
+            subprocess.run(command, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Video cutting failed for {original_id}: {e}")
+            return
         
         # audio
-        command = [
-            "ffmpeg", "-y", "-ss", str(start), "-t", str(duration),
-            "-i", mp3_path, "-acodec", "pcm_s16le", "-ac", "1", "-ar", "16000",
-            "-loglevel", "error", new_mp3_path
-        ]
-        subprocess.run(command, check=True)
+        try:
+            command = [
+                "ffmpeg", "-y",
+                "-ss", str(start), "-t", str(duration),
+                "-i", mp3_path,
+                "-c", "copy",  # copy audio stream without re-encoding
+                "-loglevel", "error",
+                new_mp3_path
+            ]
+            subprocess.run(command, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Audio cutting failed for {original_id}: {e}")
+            return
         
         # Copy metadata
         shutil.copy(json_path, new_json_path)
@@ -279,12 +289,13 @@ class YTCralwer(Crawler):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="YouTube Crawler")
-    parser.add_argument('--crawler', type=str, default='mmtrailer', choices=['mmtrailer', 'yt'])
+    # parser.add_argument('--crawler', type=str, default='mmtrailer', choices=['mmtrailer', 'yt'])
+    parser.add_argument('--crawler', type=str, default='yt', choices=['mmtrailer', 'yt'])
     args = parser.parse_args()
 
     if args.crawler == 'mmtrailer':
         crawler = MMTrailerCrawler(JSON_PATH)
     else:
-        crawler = YTCralwer(YT_VIDEOS_PATH)
+        crawler = YTCralwer(VIDEO_CSV_PATH)
 
     crawler.run()
