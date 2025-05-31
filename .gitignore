@@ -10,5 +10,9 @@ venv/
 # Ignore ckpt directory
 ckpt/
 
+# Ignore local video files
+video_crawling_result/
+
 *__pycache__
 video_preprocessor.egg-info/
+.vscode/
