@@ -5,14 +5,15 @@ import argparse
 import librosa
 import julius
 import numpy as np
-from vp.annotation.modules.panns import MUSIC_INDEX
 
-DURATION = 3
+from vp.annotation.modules.panns import MUSIC_INDEX
+from vp.configs.constants import PANN_CLIP_DURATION_SEC
+
 def convert_audio(wav, original_rate, target_rate):
     if original_rate != target_rate:
         wav = julius.resample_frac(wav, original_rate, target_rate)
-    # Split audio into 3-second chunks
-    chunk_size = DURATION * target_rate
+    # Split audio into chunks of PANN_CLIP_DURATION_SEC
+    chunk_size = PANN_CLIP_DURATION_SEC * target_rate
     chunks = []
     for i in range(0, len(wav), chunk_size):
         chunk = wav[i:i + chunk_size]
@@ -53,8 +54,8 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
     results = []
     for idx, logit in enumerate(music_logits):
         results.append({
-            "onset": idx * DURATION,
-            "offset": (idx + 1) * DURATION,
+            "onset": idx * PANN_CLIP_DURATION_SEC,
+            "offset": (idx + 1) * PANN_CLIP_DURATION_SEC,
             "music_logit": float(logit)
         })
     results_path = audio_path.split("/")[-1].replace(".mp3", ".json")

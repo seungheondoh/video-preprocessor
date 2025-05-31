@@ -18,6 +18,14 @@ _PATH_TO_VP_CRAWLING = f"{_PATH_TO_PROJECT_ROOT}/vp/crawling"
 # Directory
 LOG_DIR = f"{_PATH_TO_VP_CRAWLING}/logs"
 COOKIES_FILE_DIR = f"{_PATH_TO_VP_CRAWLING}/cookies"
+CKPT_DIR = f"{_PATH_TO_PROJECT_ROOT}/ckpt"
+DAFTPUNK_DIR = "/media/daftpunk4/home/seungheon/gaudio/data"
+
+# Video List
+VIDEO_CSV_PATH = f'{DAFTPUNK_DIR}/db/videos.csv'
+
+# Clip info
+YT_CLIP_INFO_JSON_PATH = f"{_PATH_TO_PROJECT_ROOT}/yt_dataset.json"
 
 # Log file path
 FAILED_LOG = f"{LOG_DIR}/failed_ids_clip.txt"
@@ -26,3 +34,9 @@ COMPLETED_LOG = f"{LOG_DIR}/complete_clip_ids.txt"
 
 # S3
 S3_BUCKET = "maclab-youtube-crawl"
+
+# Clipping after PANN inference
+PANN_CLIP_DURATION_SEC = 20
+MUSIC_LOGIT_THRESHOLD = 0.7
+CLIP_PADDING_SEC = 5
+MAX_CLIP_SEC = 30
