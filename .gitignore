@@ -10,6 +10,9 @@ venv/
 # Ignore ckpt directory
 ckpt/
 
+# Ignore logs
+logs/
+
 # Ignore local video files
 video_crawling_result/
 
