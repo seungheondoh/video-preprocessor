@@ -273,9 +273,9 @@ class YTCralwer(Crawler):
             }
             self.clip_info_list.append(dict_item)
         
-        # Save new dataset JSON
-        with open(self.clip_info_json_path, 'w') as f:
-            json.dump(self.clip_info_list, f, indent=4)
+            # Save new dataset JSON
+            with open(self.clip_info_json_path, 'w') as f:
+                json.dump(self.clip_info_list, f, indent=4)
             
         # Cleanup original download
         clip_dir, _, _, _ = self.get_file_path(video_id)
