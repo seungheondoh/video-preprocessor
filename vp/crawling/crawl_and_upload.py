@@ -186,9 +186,13 @@ class YTCralwer(Crawler):
     
     def _init_data(self, dataset_path):
         df = pd.read_csv(dataset_path)
-        # s3_logged = load_ids('/home/minhee/video-preprocessor/vp/crawling/logs/videos_in_s3.txt')  # TODO(minhee): Remove hardcoded path
-        # video_ids = list(set(df['video_id'].tolist()) - set(s3_logged))
-        video_ids = df['video_id'].tolist()
+        
+        # Filter out already processed video_ids
+        self.new_dataset_json_path = "yt_dataset.json" # TODO(minhee): Change to a proper path
+        with open(self.new_dataset_json_path, 'r') as f:
+            existing_data = json.load(f)
+        existing_video_ids = {item['video_id'] for item in existing_data} if existing_data else set()
+        video_ids = list(set(df['video_id'].tolist()) - existing_video_ids)
         self.data = [(vid, vid, None, None) for vid in video_ids]
 
     def process(self, video_info):
@@ -227,7 +231,7 @@ class YTCralwer(Crawler):
                 clips.append((padded_start, padded_end))
             i += 1
             
-        # STEP 3–7: For each clip, extract and upload
+        # STEP 3: For each clip, extract and upload
         for idx, (clip_start, clip_end) in enumerate(clips):
             new_clip_id = f"{video_id}_{idx:07d}"
             self.cut_clip(video_id, clip_start, clip_end, new_clip_id)
@@ -245,6 +249,11 @@ class YTCralwer(Crawler):
             
         # Cleanup original download
         shutil.rmtree(clip_dir)
+        
+        # Step 4: Save new dataset JSON
+        with open(self.new_dataset_json_path, 'w') as f:
+            json.dump(self.new_dataset_list, f)
+        
         return True
     
     def cut_clip(self, original_id, start, end, new_id):
@@ -289,13 +298,14 @@ class YTCralwer(Crawler):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="YouTube Crawler")
-    # parser.add_argument('--crawler', type=str, default='mmtrailer', choices=['mmtrailer', 'yt'])
-    parser.add_argument('--crawler', type=str, default='yt', choices=['mmtrailer', 'yt'])
+    parser.add_argument('--crawler', type=str, choices=['mmtrailer', 'yt'])
     args = parser.parse_args()
 
     if args.crawler == 'mmtrailer':
         crawler = MMTrailerCrawler(JSON_PATH)
-    else:
+    elif args.crawler == 'yt':
         crawler = YTCralwer(VIDEO_CSV_PATH)
+    else:
+        raise ValueError("Invalid crawler type. Choose 'mmtrailer' or 'yt'.")
 
     crawler.run()
