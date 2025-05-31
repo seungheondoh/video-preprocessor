@@ -196,8 +196,10 @@ class YTCralwer(Crawler):
         video_ids = list(set(df['video_id'].tolist()) - existing_video_ids)
         self.data = [(vid, vid, None, None) for vid in video_ids]
         
-    def get_music_onset_offset(self, video_id):
+    def get_clip_start_and_end(self, video_id):
         clip_dir, _, mp3_path, _ = self.get_file_path(video_id)
+        
+        # get music onset and offset using PANN
         print(f"🔍 PANN 추론 시작: {video_id}")
         extract_pann_logits(audio_path=mp3_path,
                             output_dir=clip_dir,
@@ -210,7 +212,7 @@ class YTCralwer(Crawler):
         binary = [logit["music_logit"] > MUSIC_LOGIT_THRESHOLD for logit in logits]
 
         # Group clips based on binary sequence
-        onset_offset_list = []
+        music_onset_offset_list = []
         i = 0
         start, end = -1, -1
         for i in range(len(binary)):
@@ -220,15 +222,28 @@ class YTCralwer(Crawler):
                 end = logits[i]["offset"]
             else:
                 if start != -1:
-                    onset_offset_list.append((start, end))
+                    music_onset_offset_list.append((start, end))
                 start, end = -1, -1
         if start != -1:
-            onset_offset_list.append((start, end))
+            music_onset_offset_list.append((start, end))
             
-        for i in range(len(onset_offset_list)):
-            onset_offset_list[i] = (max(0, onset_offset_list[i][0] - CLIP_PADDING_SEC), onset_offset_list[i][1] + CLIP_PADDING_SEC)
+        for i in range(len(music_onset_offset_list)):
+            music_onset_offset_list[i] = (max(0, music_onset_offset_list[i][0] - CLIP_PADDING_SEC), music_onset_offset_list[i][1] + CLIP_PADDING_SEC)
+        
+        # Split into clips if longer than MAX_CLIP_SEC
+        clip_onset_offset_list = []
+        for start, end in music_onset_offset_list:
+            duration = end - start
+            if duration > MAX_CLIP_SEC:
+                num_clips = int(np.ceil(duration / MAX_CLIP_SEC))
+                for j in range(num_clips):
+                    clip_start = start + j * MAX_CLIP_SEC
+                    clip_end = min(end, clip_start + MAX_CLIP_SEC)
+                    clip_onset_offset_list.append((clip_start, clip_end))
+            else:
+                clip_onset_offset_list.append((start, end))
             
-        return onset_offset_list if onset_offset_list else None
+        return clip_onset_offset_list
 
     def process(self, video_info):
         # Download the full video
@@ -237,12 +252,12 @@ class YTCralwer(Crawler):
             return False
 
         # Chunk into clips
-        music_onset_offset = self.get_music_onset_offset(video_info[0])
+        video_id, _, _, _ = video_info
+        music_onset_offset = self.get_clip_start_and_end(video_id)
         if not music_onset_offset:
-            print(f"음악 구간 없음: {video_info[0]}")
+            print(f"음악 구간 없음: {video_id}")
             return True
             
-        video_id, _, _, _ = video_info
         for idx, (clip_start, clip_end) in enumerate(music_onset_offset):
             new_clip_id = f"{video_id}_{idx:07d}"
             self.cut_clip(video_id, clip_start, clip_end, new_clip_id)
