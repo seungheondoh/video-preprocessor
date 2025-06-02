@@ -195,24 +195,51 @@ class YTCralwer(Crawler):
         video_ids = list(set(df['video_id'].tolist()) - existing_video_ids)
         self.data = [(vid, vid, None, None) for vid in video_ids]
         
+    def download_audio_only(self, video_id, output_dir):
+        cookie_fn = self.get_cookie_file_path()
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': f'{output_dir}/%(id)s.%(ext)s',
+            'noplaylist': True,
+            'quiet': True,
+            'no_warnings': True,
+            'postprocessors': [],  # No conversion
+            'cookiefile': cookie_fn,
+            'writeinfojson': True,
+        }
 
-    def process(self, video_info):
-        # Download the full video
-        success = self.download_clip(video_info)
-        if not success:
+        # TODO(minhee): Remove duplicated code ㅠㅠ from here
+        # ✅ 랜덤한 시간 지연 추가 (0.5초 ~ 1.5초)
+        sleep_time = random.uniform(0.5, 1.5)
+        print(f"[WAIT] {video_id} audio 다운로드 전 대기 중... ({sleep_time:.2f}초)")
+        time.sleep(sleep_time)
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
+        except Exception as e:
+            error_msg = str(e).lower()
+            self.handle_error_message(error_msg, cookie_fn)
+            shutil.rmtree(output_dir, ignore_errors=True)
             return False
-
-        # Chunk into clips
-        video_id, _, _, _ = video_info
-        clip_dir, _, mp3_path, _ = self.get_file_path(video_id)
-        music_onset_offset = get_clip_start_and_end(mp3_path, clip_dir)
-        if not music_onset_offset:
-            print(f"음악 구간 없음: {video_id}")
-            return True
-            
+        
+        return True
+    
+    def download_clips_per_video(self, video_id):
+        video_dir, _, mp3_path, _ = self.get_file_path(video_id)
+        # TODO(minhee): Find a way to handle file dir, and avoid hard coding
+        clip_onset_offset_path = os.path.join(video_dir, os.path.basename(mp3_path).replace(".mp3", "_clip_info.json"))
+        
+        with open(clip_onset_offset_path) as f:
+            music_onset_offset = json.load(f)
+        
         for idx, (clip_start, clip_end) in enumerate(music_onset_offset):
             new_clip_id = f"{video_id}_{idx:07d}"
-            self.cut_clip(video_id, clip_start, clip_end, new_clip_id)
+            args = (video_id, new_clip_id, clip_start, clip_end)
+            
+            # Download clipped video, and extract audio
+            success = self.download_clip(args)
+            if not success:
+                return False
 
             # Upload to S3
             self.s3_upload(new_clip_id)
@@ -230,49 +257,68 @@ class YTCralwer(Crawler):
                 json.dump(self.clip_info_list, f, indent=4)
             
         # Cleanup original download
-        clip_dir, _, _, _ = self.get_file_path(video_id)
-        shutil.rmtree(clip_dir)
+        shutil.rmtree(video_dir)
+        
+        
+    def process(self, video_info):
+        video_id, _, _, _ = video_info
+        video_dir, _, mp3_path, _ = self.get_file_path(video_id)
+        
+        # Download the full audio (audio only)
+        success = self.download_audio_only(video_id, video_dir)
+        if not success:
+            return False
+
+        # Get clips' onset, offset (this includes PANN inference)
+        music_onset_offset = get_clip_start_and_end(mp3_path, video_dir)
+        if not music_onset_offset:
+            print(f"음악 구간 없음: {video_id}")
+            return True
+        
+        # Download clip video, and extract audio
+        self.download_clips_per_video(video_id)
+
         
         return True
     
-    def cut_clip(self, original_id, start, end, new_id):
-        _, mp4_path, mp3_path, json_path = self.get_file_path(original_id)
-        new_clip_dir, new_mp4_path, new_mp3_path, new_json_path = self.get_file_path(new_id)
-        os.makedirs(new_clip_dir, exist_ok=True)
+    # def cut_clip(self, original_id, start, end, new_id):
+    #     _, mp4_path, mp3_path, json_path = self.get_file_path(original_id)
+    #     new_clip_dir, new_mp4_path, new_mp3_path, new_json_path = self.get_file_path(new_id)
+    #     os.makedirs(new_clip_dir, exist_ok=True)
         
-        # Cut video and audio
-        duration = end - start
+    #     # Cut video and audio
+    #     duration = end - start
         
-        # video
-        try:
-            command = [
-                "ffmpeg", "-y", "-ss", str(start), "-t", str(duration),
-                "-i", mp4_path, "-c:v", "libx264", "-c:a", "aac",
-                "-strict", "experimental", "-loglevel", "error",
-                new_mp4_path
-            ]
-            subprocess.run(command, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Video cutting failed for {original_id}: {e}")
-            return
+    #     # video
+    #     try:
+    #         command = [
+    #             "ffmpeg", "-y", "-ss", str(start), "-t", str(duration),
+    #             "-i", mp4_path, "-c:v", "libx264", "-c:a", "aac",
+    #             "-strict", "experimental", "-loglevel", "error",
+    #             new_mp4_path
+    #         ]
+    #         subprocess.run(command, check=True)
+    #     except subprocess.CalledProcessError as e:
+    #         print(f"❌ Video cutting failed for {original_id}: {e}")
+    #         return
         
-        # audio
-        try:
-            command = [
-                "ffmpeg", "-y",
-                "-ss", str(start), "-t", str(duration),
-                "-i", mp3_path,
-                "-c", "copy",  # copy audio stream without re-encoding
-                "-loglevel", "error",
-                new_mp3_path
-            ]
-            subprocess.run(command, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Audio cutting failed for {original_id}: {e}")
-            return
+    #     # audio
+    #     try:
+    #         command = [
+    #             "ffmpeg", "-y",
+    #             "-ss", str(start), "-t", str(duration),
+    #             "-i", mp3_path,
+    #             "-c", "copy",  # copy audio stream without re-encoding
+    #             "-loglevel", "error",
+    #             new_mp3_path
+    #         ]
+    #         subprocess.run(command, check=True)
+    #     except subprocess.CalledProcessError as e:
+    #         print(f"❌ Audio cutting failed for {original_id}: {e}")
+    #         return
         
-        # metadata
-        shutil.copy(json_path, new_json_path)
+    #     # metadata
+    #     shutil.copy(json_path, new_json_path)
 
 
 if __name__ == '__main__':
