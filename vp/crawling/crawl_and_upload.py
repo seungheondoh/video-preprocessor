@@ -277,50 +277,9 @@ class YTCralwer(Crawler):
         
         # Download clip video, and extract audio
         self.download_clips_per_video(video_id)
-
         
         return True
     
-    # def cut_clip(self, original_id, start, end, new_id):
-    #     _, mp4_path, mp3_path, json_path = self.get_file_path(original_id)
-    #     new_clip_dir, new_mp4_path, new_mp3_path, new_json_path = self.get_file_path(new_id)
-    #     os.makedirs(new_clip_dir, exist_ok=True)
-        
-    #     # Cut video and audio
-    #     duration = end - start
-        
-    #     # video
-    #     try:
-    #         command = [
-    #             "ffmpeg", "-y", "-ss", str(start), "-t", str(duration),
-    #             "-i", mp4_path, "-c:v", "libx264", "-c:a", "aac",
-    #             "-strict", "experimental", "-loglevel", "error",
-    #             new_mp4_path
-    #         ]
-    #         subprocess.run(command, check=True)
-    #     except subprocess.CalledProcessError as e:
-    #         print(f"❌ Video cutting failed for {original_id}: {e}")
-    #         return
-        
-    #     # audio
-    #     try:
-    #         command = [
-    #             "ffmpeg", "-y",
-    #             "-ss", str(start), "-t", str(duration),
-    #             "-i", mp3_path,
-    #             "-c", "copy",  # copy audio stream without re-encoding
-    #             "-loglevel", "error",
-    #             new_mp3_path
-    #         ]
-    #         subprocess.run(command, check=True)
-    #     except subprocess.CalledProcessError as e:
-    #         print(f"❌ Audio cutting failed for {original_id}: {e}")
-    #         return
-        
-    #     # metadata
-    #     shutil.copy(json_path, new_json_path)
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="YouTube Crawler")
     parser.add_argument('--crawler', type=str, choices=['mmtrailer', 'yt'])
