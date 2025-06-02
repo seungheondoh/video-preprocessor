@@ -33,7 +33,8 @@ def get_clip_start_and_end(mp3_path, output_dir):
             start, end = -1, -1
     if start != -1:
         music_onset_offset_list.append((start, end))
-        
+    
+    # Add padding
     for i in range(len(music_onset_offset_list)):
         music_onset_offset_list[i] = (max(0, music_onset_offset_list[i][0] - CLIP_PADDING_SEC), music_onset_offset_list[i][1] + CLIP_PADDING_SEC)
     
