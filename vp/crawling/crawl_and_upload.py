@@ -213,10 +213,26 @@ class YTCralwer(Crawler):
     
     def _init_data(self, dataset_path):
         df = pd.read_csv(dataset_path)
-
-        # TODO(minhee): Remove this later        
-        if self.do_detect_music and not self.do_download_audio and not self.do_download_video:
+        # TODO(minhee): Find a good way to handle this, rather than dividing into cases like this.
+        if self.do_detect_music and not (self.do_download_audio or self.do_download_video):
             video_ids = os.listdir(DOWNLOAD_DIR)
+            video_ids = [
+                vid for vid in video_ids
+                if not os.path.exists(os.path.join(DOWNLOAD_DIR, vid, f"{vid}_clip_info.json"))
+            ]
+        elif self.do_download_audio:
+            video_ids = list(set(df['video_id'].tolist()))
+            # Remove video_ids that already have .webm or .mp3 files in their directory
+            filtered_video_ids = []
+            for vid in video_ids:
+                vid_dir = os.path.join(DOWNLOAD_DIR, vid)
+                if not os.path.isdir(vid_dir):
+                    filtered_video_ids.append(vid)
+                    continue
+                files = os.listdir(vid_dir)
+                if not any(f.endswith('.webm') or f.endswith('.mp3') for f in files):
+                    filtered_video_ids.append(vid)
+            video_ids = filtered_video_ids
         else:
             # Filter out already processed video_ids
             if os.path.exists(self.clip_info_json_path):
