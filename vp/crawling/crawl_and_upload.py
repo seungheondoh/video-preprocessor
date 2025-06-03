@@ -217,7 +217,6 @@ class YTCralwer(Crawler):
         # TODO(minhee): Remove this later        
         if self.do_detect_music and not self.do_download_audio and not self.do_download_video:
             video_ids = os.listdir(DOWNLOAD_DIR)
-            
         else:
             # Filter out already processed video_ids
             if os.path.exists(self.clip_info_json_path):
@@ -225,7 +224,8 @@ class YTCralwer(Crawler):
                     self.clip_info_list = json.load(f)
             existing_video_ids = set(item['video_id'] for item in self.clip_info_list) if self.clip_info_list else set()
             video_ids = list(set(df['video_id'].tolist()) - existing_video_ids)
-            self.data = [(vid, vid, None, None) for vid in video_ids]
+        
+        self.data = [(vid, vid, None, None) for vid in video_ids]
         
     def get_file_path(self, clip_id):
         if self.do_download_audio or self.do_detect_music:
