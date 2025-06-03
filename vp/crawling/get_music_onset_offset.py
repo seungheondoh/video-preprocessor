@@ -6,12 +6,24 @@ from vp.annotation.music_detection import extract_pann_logits
 from vp.configs.constants import *
 
 def get_clip_start_and_end(mp3_path, output_dir):
+    if not os.path.exists(mp3_path):
+        print(f'mp3_path {mp3_path} does not exist.')
+        return
+    
+    # TODO(minhee): Handle file path in noble way... And avoid hardcoding
+    clip_onset_offset_path = os.path.join(output_dir, os.path.basename(mp3_path).replace(".mp3", "_clip_info.json"))
+    if os.path.exists(clip_onset_offset_path):
+        return
+    
     # get music onset and offset using PANN
-    print(f"🔍 PANN 추론 시작: {mp3_path}")
-    extract_pann_logits(audio_path=mp3_path,
-                        output_dir=output_dir,
-                        ckpt_dir=CKPT_DIR)
     logit_path = os.path.join(output_dir, os.path.basename(mp3_path).replace(".mp3", ".json"))
+    if not os.path.exists(logit_path):
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6"
+        print(f"🔍 PANN 추론 시작: {mp3_path}")
+        extract_pann_logits(audio_path=mp3_path,
+                            output_dir=output_dir,
+                            ckpt_dir=CKPT_DIR)
+    
     with open(logit_path) as f:
         logits = json.load(f)
 
@@ -51,8 +63,6 @@ def get_clip_start_and_end(mp3_path, output_dir):
         else:
             clip_onset_offset_list.append((start, end))
             
-    # TODO(minhee): Handle file path in noble way... And avoid hardcoding
-    clip_onset_offset_path = os.path.join(output_dir, os.path.basename(mp3_path).replace(".mp3", "_clip_info.json"))
     with open(clip_onset_offset_path) as f:
         json.dump(clip_onset_offset_list, f)
         

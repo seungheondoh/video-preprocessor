@@ -5,6 +5,7 @@ DOWNLOAD_DIR = None
 JSON_PATH = None
 S3_PREFIX = None
 NUM_WORKERS = None
+GPU_NUMBERS = None # e.g. "0,1,2,3,4,5,6"
 
 try:
     from .user_config import *  # override private settings

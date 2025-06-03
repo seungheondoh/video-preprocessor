@@ -252,8 +252,9 @@ class YTCralwer(Crawler):
             with open(self.clip_info_json_path, 'w') as f:
                 json.dump(self.clip_info_list, f, indent=4)
             
-        # Cleanup original download
-        shutil.rmtree(video_dir)
+        # TODO(minhee): Cleaning up like this is dangerous, so I'll hide it for now
+        # # Cleanup original download
+        # shutil.rmtree(video_dir)
         
         
     def process(self, video_info):
@@ -267,10 +268,7 @@ class YTCralwer(Crawler):
                 return False
         if self.detect_music:
             # Get clips' onset, offset (this includes PANN inference)
-            music_onset_offset = get_clip_start_and_end(mp3_path, video_dir)
-            if not music_onset_offset:
-                print(f"음악 구간 없음: {video_id}")
-                return True
+            get_clip_start_and_end(mp3_path, video_dir)
         # Download clip video, and extract audio
         if self.download_video:
             self.download_clips_per_video(video_id)
