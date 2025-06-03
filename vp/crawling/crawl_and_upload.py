@@ -52,6 +52,28 @@ class Crawler:
                 if self.get_cookie_file_path() == used_cookie_fn:
                     cur_cookie_index.value += 1
                     print(f"🔄 쿠키 파일 변경: {self.get_cookie_file_path()}")
+    
+    def _ytlp_download(self, ydl_opts, video_id, clip_id=None):
+        cookie_fn = self.get_cookie_file_path()
+        ydl_opts['cookiefile'] = cookie_fn
+        if clip_id is None:
+            clip_id = video_id
+        
+        # ✅ 랜덤한 시간 지연 추가 (0.5초 ~ 1.5초)
+        sleep_time = random.uniform(0.5, 1.5)
+        print(f"[WAIT] {clip_id} 다운로드 전 대기 중... ({sleep_time:.2f}초)")
+        time.sleep(sleep_time)
+
+        print(f">>> {clip_id} 다운로드 중...")
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
+        except Exception as e:
+            error_msg = str(e).lower()
+            log_result(clip_id, FAILED_LOG, error_msg)
+            self.handle_error_message(error_msg, cookie_fn)
+            return False
+        return True
 
     def download_clip(self, args):
         video_id, clip_id, start_sec, end_sec = args
@@ -65,39 +87,24 @@ class Crawler:
         ytdlp_mp3_path = os.path.join(clip_dir, f"{clip_id}_audio.mp3")
         ytdlp_json_path = os.path.join(clip_dir, f"{clip_id}.info.json")
         mp4_template = os.path.join(clip_dir, f"{clip_id}.%(ext)s")
+        
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'noplaylist': True,
+            'ignoreerrors': False,
+            'outtmpl': mp4_template,
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
+            'merge_output_format': 'mp4',
+            # 'writeinfojson': True,
+            'force_keyframes_at_cuts': True,
+            'postprocessors': [],
+        }
+        if start_sec is not None and end_sec is not None:
+            ydl_opts['download_ranges'] = download_range_func(None, [(start_sec, end_sec)])
 
-        cookie_fn = self.get_cookie_file_path()
-
-        try:
-            ydl_opts = {
-                'quiet': True,
-                'no_warnings': True,
-                'noplaylist': True,
-                'ignoreerrors': False,
-                'cookiefile': cookie_fn,
-                'outtmpl': mp4_template,
-                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
-                'merge_output_format': 'mp4',
-                'writeinfojson': True,
-                'force_keyframes_at_cuts': True,
-                'postprocessors': [],
-            }
-            if start_sec is not None and end_sec is not None:
-                ydl_opts['download_ranges'] = download_range_func(None, [(start_sec, end_sec)])
-            
-            # ✅ 랜덤한 시간 지연 추가 (0.5초 ~ 1.5초)
-            sleep_time = random.uniform(0.5, 1.5)
-            print(f"[WAIT] {clip_id} 다운로드 전 대기 중... ({sleep_time:.2f}초)")
-            time.sleep(sleep_time)
-
-            print(f">>> {clip_id} 다운로드 중...")
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
-
-        except Exception as e:
-            error_msg = str(e).lower()
-            log_result(clip_id, FAILED_LOG, error_msg)
-            self.handle_error_message(error_msg, cookie_fn)
+        success = self._ytlp_download(ydl_opts, video_id, clip_id)
+        if not success:
             shutil.rmtree(clip_dir, ignore_errors=True)
             return False
 
@@ -196,7 +203,6 @@ class YTCralwer(Crawler):
         self.data = [(vid, vid, None, None) for vid in video_ids]
         
     def download_audio_only(self, video_id, output_dir):
-        cookie_fn = self.get_cookie_file_path()
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': f'{output_dir}/%(id)s.%(ext)s',
@@ -204,25 +210,10 @@ class YTCralwer(Crawler):
             'quiet': True,
             'no_warnings': True,
             'postprocessors': [],  # No conversion
-            'cookiefile': cookie_fn,
             'writeinfojson': True,
         }
-
-        # TODO(minhee): Remove duplicated code ㅠㅠ from here
-        # ✅ 랜덤한 시간 지연 추가 (0.5초 ~ 1.5초)
-        sleep_time = random.uniform(0.5, 1.5)
-        print(f"[WAIT] {video_id} audio 다운로드 전 대기 중... ({sleep_time:.2f}초)")
-        time.sleep(sleep_time)
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
-        except Exception as e:
-            error_msg = str(e).lower()
-            self.handle_error_message(error_msg, cookie_fn)
-            shutil.rmtree(output_dir, ignore_errors=True)
-            return False
         
-        return True
+        return self._ytlp_download(ydl_opts, video_id)
     
     def download_clips_per_video(self, video_id):
         video_dir, _, mp3_path, _ = self.get_file_path(video_id)
