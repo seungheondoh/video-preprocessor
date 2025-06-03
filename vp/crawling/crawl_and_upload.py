@@ -205,6 +205,16 @@ class YTCralwer(Crawler):
         video_ids = list(set(df['video_id'].tolist()) - existing_video_ids)
         self.data = [(vid, vid, None, None) for vid in video_ids]
         
+    def get_file_path(self, clip_id):
+        if self.download_audio or self.detect_music:
+            clip_dir = os.path.join(DOWNLOAD_DIR, clip_id)
+            mp4_path = None
+            mp3_path = os.path.join(clip_dir, f"{clip_id}.webm")
+            json_path = os.path.join(clip_dir, f"{clip_id}.info.json")
+            return clip_dir, mp4_path, mp3_path, json_path
+        else:
+            return super().get_file_path(clip_id)
+        
     def download_audio_only(self, video_id, output_dir):
         if os.path.exists(output_dir):
             return True
