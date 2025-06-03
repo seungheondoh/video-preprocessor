@@ -170,7 +170,7 @@ class Crawler:
     def run(self):
         print(f"🔍 처리할 clip_id 수: {len(self.data)}")
         with Pool(NUM_WORKERS) as pool:
-            with tqdm(total=len(self.data), desc="다운로드 및 업로드 진행") as pbar:
+            with tqdm(total=len(self.data), desc="crawl_and_upload.py") as pbar:
                 for _ in pool.imap_unordered(self.process, self.data):
                     pbar.update(1)
 
