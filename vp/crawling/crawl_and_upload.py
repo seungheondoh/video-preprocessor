@@ -186,10 +186,13 @@ class MMTrailerCrawler(Crawler):
         return False
     
 class YTCralwer(Crawler):
-    def __init__(self, dataset_path):
+    def __init__(self, dataset_path, options):
         self.clip_info_json_path = YT_CLIP_INFO_JSON_PATH
         self.clip_info_list = []
         super().__init__(dataset_path=dataset_path)
+        self.download_audio = options[0]
+        self.detect_music = options[1]
+        self.download_video = options[2]
     
     def _init_data(self, dataset_path):
         df = pd.read_csv(dataset_path)
@@ -255,31 +258,39 @@ class YTCralwer(Crawler):
         video_id, _, _, _ = video_info
         video_dir, _, mp3_path, _ = self.get_file_path(video_id)
         
-        # Download the full audio (audio only)
-        success = self.download_audio_only(video_id, video_dir)
-        if not success:
-            return False
-
-        # Get clips' onset, offset (this includes PANN inference)
-        music_onset_offset = get_clip_start_and_end(mp3_path, video_dir)
-        if not music_onset_offset:
-            print(f"음악 구간 없음: {video_id}")
-            return True
-        
+        if self.download_audio:
+            # Download the full audio (audio only)
+            success = self.download_audio_only(video_id, video_dir)
+            if not success:
+                return False
+        if self.detect_music:
+            # Get clips' onset, offset (this includes PANN inference)
+            music_onset_offset = get_clip_start_and_end(mp3_path, video_dir)
+            if not music_onset_offset:
+                print(f"음악 구간 없음: {video_id}")
+                return True
         # Download clip video, and extract audio
-        self.download_clips_per_video(video_id)
+        if self.download_video:
+            self.download_clips_per_video(video_id)
         
         return True
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="YouTube Crawler")
     parser.add_argument('--crawler', type=str, choices=['mmtrailer', 'yt'])
+    # TODO(minhee): This is only used for args.crawler=='yt' case. Clean these up.
+    parser.add_argument('--download_audio', action='store_true')
+    parser.add_argument('--detect_music', action='store_true')
+    parser.add_argument('--download_video_clip', action='store_true')
     args = parser.parse_args()
 
     if args.crawler == 'mmtrailer':
         crawler = MMTrailerCrawler(JSON_PATH)
     elif args.crawler == 'yt':
-        crawler = YTCralwer(VIDEO_CSV_PATH)
+        download_audio = args.download_audio
+        detect_music = args.detect_music
+        download_video = args.download_video
+        crawler = YTCralwer(VIDEO_CSV_PATH, (download_audio, detect_music, download_video))
     else:
         raise ValueError("Invalid crawler type. Choose 'mmtrailer' or 'yt'.")
 
