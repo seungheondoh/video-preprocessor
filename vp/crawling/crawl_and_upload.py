@@ -206,21 +206,26 @@ class YTCralwer(Crawler):
     def __init__(self, dataset_path, options):
         self.clip_info_json_path = YT_CLIP_INFO_JSON_PATH
         self.clip_info_list = []
-        super().__init__(dataset_path=dataset_path)
         self.do_download_audio = options[0]
         self.do_detect_music = options[1]
         self.do_download_video = options[2]
+        super().__init__(dataset_path=dataset_path)
     
     def _init_data(self, dataset_path):
         df = pd.read_csv(dataset_path)
-        
-        # Filter out already processed video_ids
-        if os.path.exists(self.clip_info_json_path):
-            with open(self.clip_info_json_path, 'r') as f:
-                self.clip_info_list = json.load(f)
-        existing_video_ids = set(item['video_id'] for item in self.clip_info_list) if self.clip_info_list else set()
-        video_ids = list(set(df['video_id'].tolist()) - existing_video_ids)
-        self.data = [(vid, vid, None, None) for vid in video_ids]
+
+        # TODO(minhee): Remove this later        
+        if self.do_detect_music and not self.do_download_audio and not self.do_download_video:
+            video_ids = os.listdir(DOWNLOAD_DIR)
+            
+        else:
+            # Filter out already processed video_ids
+            if os.path.exists(self.clip_info_json_path):
+                with open(self.clip_info_json_path, 'r') as f:
+                    self.clip_info_list = json.load(f)
+            existing_video_ids = set(item['video_id'] for item in self.clip_info_list) if self.clip_info_list else set()
+            video_ids = list(set(df['video_id'].tolist()) - existing_video_ids)
+            self.data = [(vid, vid, None, None) for vid in video_ids]
         
     def get_file_path(self, clip_id):
         if self.do_download_audio or self.do_detect_music:
