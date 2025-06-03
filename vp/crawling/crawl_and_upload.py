@@ -237,8 +237,10 @@ class YTCralwer(Crawler):
         else:
             return super().get_file_path(clip_id)
         
-    def download_audio_only(self, video_id, output_dir):
-        if os.path.exists(output_dir):
+    def download_audio_only(self, video_id):
+        output_dir, _, mp3_path, _ = self.get_file_path(video_id)
+            
+        if os.path.exists(mp3_path):
             return True
         
         ydl_opts = {
@@ -295,7 +297,7 @@ class YTCralwer(Crawler):
         
         if self.do_download_audio:
             # Download the full audio (audio only)
-            success = self.download_audio_only(video_id, video_dir)
+            success = self.download_audio_only(video_id)
             if not success:
                 return False
         if self.do_detect_music:
