@@ -206,6 +206,9 @@ class YTCralwer(Crawler):
         self.data = [(vid, vid, None, None) for vid in video_ids]
         
     def download_audio_only(self, video_id, output_dir):
+        if os.path.exists(output_dir):
+            return True
+        
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': f'{output_dir}/%(id)s.%(ext)s',
@@ -215,7 +218,6 @@ class YTCralwer(Crawler):
             'postprocessors': [],  # No conversion
             'writeinfojson': True,
         }
-        
         return self._ytlp_download(ydl_opts, video_id)
     
     def download_clips_per_video(self, video_id):
