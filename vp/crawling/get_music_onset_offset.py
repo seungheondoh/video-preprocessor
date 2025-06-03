@@ -11,12 +11,12 @@ def get_clip_start_and_end(mp3_path, output_dir):
         return
     
     # TODO(minhee): Handle file path in noble way... And avoid hardcoding
-    clip_onset_offset_path = os.path.join(output_dir, os.path.basename(mp3_path).replace(".mp3", "_clip_info.json"))
+    clip_onset_offset_path = os.path.join(output_dir, os.path.splitext(os.path.basename(mp3_path))[0] + "_clip_info.json")
     if os.path.exists(clip_onset_offset_path):
         return
     
     # get music onset and offset using PANN
-    logit_path = os.path.join(output_dir, os.path.basename(mp3_path).replace(".mp3", ".json"))
+    logit_path = os.path.join(output_dir, os.path.splitext(os.path.basename(mp3_path))[0] + ".json")
     if not os.path.exists(logit_path):
         os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6"
         print(f"🔍 PANN 추론 시작: {mp3_path}")

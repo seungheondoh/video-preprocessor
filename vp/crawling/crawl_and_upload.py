@@ -255,7 +255,7 @@ class YTCralwer(Crawler):
     def download_clips_per_video(self, video_id):
         video_dir, _, mp3_path, _ = self.get_file_path(video_id)
         # TODO(minhee): Find a way to handle file dir, and avoid hard coding
-        clip_onset_offset_path = os.path.join(video_dir, os.path.basename(mp3_path).replace(".mp3", "_clip_info.json"))
+        clip_onset_offset_path = os.path.join(video_dir, os.path.splitext(os.path.basename(mp3_path))[0] + "_clip_info.json")
         
         with open(clip_onset_offset_path) as f:
             music_onset_offset = json.load(f)

@@ -58,7 +58,7 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
             "offset": (idx + 1) * PANN_CLIP_DURATION_SEC,
             "music_logit": float(logit)
         })
-    results_path = audio_path.split("/")[-1].replace(".mp3", ".json")
+    results_path = os.path.splitext(os.path.basename(audio_path))[0] + ".json"
     with open(os.path.join(output_dir, results_path), "w") as f:
         json.dump(results, f)
 
