@@ -63,7 +63,7 @@ def get_clip_start_and_end(mp3_path, output_dir):
         else:
             clip_onset_offset_list.append((start, end))
             
-    with open(clip_onset_offset_path) as f:
+    with open(clip_onset_offset_path, "w") as f:
         json.dump(clip_onset_offset_list, f)
         
     return clip_onset_offset_list
