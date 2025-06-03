@@ -9,7 +9,7 @@ import random
 import argparse
 import pandas as pd
 from tqdm import tqdm
-from multiprocessing import Pool, Value, Lock
+from multiprocessing import Pool, Value, Lock, Manager
 
 import boto3
 
@@ -18,8 +18,12 @@ from vp.configs.constants import *
 from vp.crawling.get_music_onset_offset import get_clip_start_and_end
 
 s3 = boto3.client("s3")
-cur_cookie_index = Value('i', 0)
-cookie_lock = Lock()
+
+manager = Manager()
+cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')] + ['default.txt']
+cookie_status = manager.dict({i: True for i in range(len(cookie_file_names))})
+cur_cookie_index = manager.Value('i', 0)
+cookie_lock = manager.Lock()
 
 
 def extract_audio(mp4_path, mp3_path):
@@ -41,17 +45,32 @@ class Crawler:
 
     def get_cookie_file_path(self):
         with cookie_lock:
-            cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')] + ['default.txt']
-            cur_cookie_index.value %= len(cookie_file_names)
-            cookie_file_name = cookie_file_names[cur_cookie_index.value]
-            return os.path.join(COOKIES_FILE_DIR, cookie_file_name)
+            total_cookies = len(cookie_file_names)
+
+            for _ in range(total_cookies):
+                index = cur_cookie_index.value % total_cookies
+                if cookie_status[index]:
+                    cur_cookie_index.value = index
+                    return os.path.join(COOKIES_FILE_DIR, cookie_file_names[index])
+                else:
+                    cur_cookie_index.value += 1
+
+            # All cookies exhausted
+            print("❌ 모든 쿠키가 사용 불가 상태입니다. 작업을 중단합니다.")
+            raise RuntimeError("All cookies unavailable")
 
     def handle_error_message(self, error_message, used_cookie_fn):
         if "not a bot" in error_message or "rate-limited" in error_message:
             with cookie_lock:
-                if self.get_cookie_file_path() == used_cookie_fn:
-                    cur_cookie_index.value += 1
-                    print(f"🔄 쿠키 파일 변경: {self.get_cookie_file_path()}")
+                # Mark unavailable cookie fn.
+                try:
+                    failed_index = cookie_file_names.index(os.path.basename(used_cookie_fn))
+                    cookie_status[failed_index] = False
+                except ValueError:
+                    return  # Unknown file, ignore
+                
+                return self.get_cookie_file_path()
+
     
     def _ytlp_download(self, ydl_opts, video_id, clip_id=None):
         cookie_fn = self.get_cookie_file_path()
