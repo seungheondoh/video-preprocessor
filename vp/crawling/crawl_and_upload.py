@@ -55,7 +55,7 @@ class Crawler:
         cookie_error_keywords = ['not a bot',
                                  'rate-limited',
                                  'HTTP Error 403: Forbidden']
-        if any(keyword in error_message for keyword in cookie_error_keywords):
+        if any(keyword.lower() in error_message.lower() for keyword in cookie_error_keywords):
             with cookie_lock:
                 try:
                     failed_index = cookie_file_names.index(os.path.basename(used_cookie_fn))
@@ -65,12 +65,8 @@ class Crawler:
                 except ValueError:
                     return  # Unknown filename; ignore
 
-                if not available_cookie_indices:
-                    print("❌ 모든 쿠키가 rate-limited 상태입니다. 작업을 중단합니다.")
-                    sys.exit(1)
-
-                # Return another available cookie
-                return self.get_cookie_file_path()
+            # Return another available cookie
+            return self.get_cookie_file_path()
 
     
     def _ytlp_download(self, ydl_opts, video_id, clip_id=None):
