@@ -1,6 +1,7 @@
 import yt_dlp
 from yt_dlp.utils import download_range_func
 import os
+import sys
 import json
 import shutil
 import subprocess
@@ -20,11 +21,9 @@ from vp.crawling.get_music_onset_offset import get_clip_start_and_end
 s3 = boto3.client("s3")
 
 manager = Manager()
-cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')] + ['default.txt']
-cookie_status = manager.dict({i: True for i in range(len(cookie_file_names))})
-cur_cookie_index = manager.Value('i', 0)
-cookie_lock = manager.Lock()
-
+cookie_lock = Lock()
+cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')]
+available_cookie_indices = manager.list(list(range(len(cookie_file_names))))
 
 def extract_audio(mp4_path, mp3_path):
     cmd = [
@@ -45,30 +44,29 @@ class Crawler:
 
     def get_cookie_file_path(self):
         with cookie_lock:
-            total_cookies = len(cookie_file_names)
+            if not available_cookie_indices:
+                print("❌ 모든 쿠키가 사용 불가 상태입니다. 작업을 중단합니다.")
+                sys.exit(1)
 
-            for _ in range(total_cookies):
-                index = cur_cookie_index.value % total_cookies
-                if cookie_status[index]:
-                    cur_cookie_index.value = index
-                    return os.path.join(COOKIES_FILE_DIR, cookie_file_names[index])
-                else:
-                    cur_cookie_index.value += 1
-
-            # All cookies exhausted
-            print("❌ 모든 쿠키가 사용 불가 상태입니다. 작업을 중단합니다.")
-            raise RuntimeError("All cookies unavailable")
+            index = random.choice(available_cookie_indices)
+            return os.path.join(COOKIES_FILE_DIR, cookie_file_names[index])
 
     def handle_error_message(self, error_message, used_cookie_fn):
         if "not a bot" in error_message or "rate-limited" in error_message:
             with cookie_lock:
-                # Mark unavailable cookie fn.
                 try:
                     failed_index = cookie_file_names.index(os.path.basename(used_cookie_fn))
-                    cookie_status[failed_index] = False
+                    if failed_index in available_cookie_indices:
+                        available_cookie_indices.remove(failed_index)
+                        print(f"⚠️ 쿠키 파일 {used_cookie_fn} 사용 불가로 제거")
                 except ValueError:
-                    return  # Unknown file, ignore
-                
+                    return  # Unknown filename; ignore
+
+                if not available_cookie_indices:
+                    print("❌ 모든 쿠키가 rate-limited 상태입니다. 작업을 중단합니다.")
+                    sys.exit(1)
+
+                # Return another available cookie
                 return self.get_cookie_file_path()
 
     
