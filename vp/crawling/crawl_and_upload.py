@@ -283,7 +283,7 @@ if __name__ == '__main__':
     # TODO(minhee): This is only used for args.crawler=='yt' case. Clean these up.
     parser.add_argument('--download_audio', action='store_true')
     parser.add_argument('--detect_music', action='store_true')
-    parser.add_argument('--download_video_clip', action='store_true')
+    parser.add_argument('--download_video', action='store_true')
     args = parser.parse_args()
 
     if args.crawler == 'mmtrailer':
