@@ -52,7 +52,10 @@ class Crawler:
             return os.path.join(COOKIES_FILE_DIR, cookie_file_names[index])
 
     def handle_error_message(self, error_message, used_cookie_fn):
-        if "not a bot" in error_message or "rate-limited" in error_message:
+        cookie_error_keywords = ['not a bot',
+                                 'rate-limited',
+                                 'HTTP Error 403: Forbidden']
+        if any(keyword in error_message for keyword in cookie_error_keywords):
             with cookie_lock:
                 try:
                     failed_index = cookie_file_names.index(os.path.basename(used_cookie_fn))
@@ -76,8 +79,9 @@ class Crawler:
         if clip_id is None:
             clip_id = video_id
         
-        # ✅ 랜덤한 시간 지연 추가 (0.5초 ~ 1.5초)
-        sleep_time = random.uniform(0.5, 1.5)
+        # ✅ 랜덤한 시간 지연 추가
+        # sleep_time = random.uniform(0.5, 1.5)
+        sleep_time = random.uniform(1, 2)
         print(f"[WAIT] {clip_id} 다운로드 전 대기 중... ({sleep_time:.2f}초)")
         time.sleep(sleep_time)
 
@@ -250,7 +254,7 @@ class YTCralwer(Crawler):
             'quiet': True,
             'no_warnings': True,
             'postprocessors': [],  # No conversion
-            'writeinfojson': True,
+            # 'writeinfojson': True,
         }
         return self._ytlp_download(ydl_opts, video_id)
     
@@ -316,8 +320,11 @@ if __name__ == '__main__':
     parser.add_argument('--do_download_audio', action='store_true')
     parser.add_argument('--do_detect_music', action='store_true')
     parser.add_argument('--do_download_video', action='store_true')
+    parser.add_argument('--n_workers', type=int)
     args = parser.parse_args()
 
+    if args.n_workers is not None:
+        NUM_WORKERS = args.n_workers
     if args.crawler == 'mmtrailer':
         crawler = MMTrailerCrawler(JSON_PATH)
     elif args.crawler == 'yt':
