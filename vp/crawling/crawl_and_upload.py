@@ -54,7 +54,8 @@ class Crawler:
     def handle_error_message(self, error_message, used_cookie_fn):
         cookie_error_keywords = ['not a bot',
                                  'rate-limited',
-                                 'HTTP Error 403: Forbidden']
+                                 'HTTP Error 403: Forbidden',
+                                 'does not look like a netscape format cookies file']
         if any(keyword.lower() in error_message.lower() for keyword in cookie_error_keywords):
             with cookie_lock:
                 try:
