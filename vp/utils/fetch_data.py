@@ -23,7 +23,7 @@ def load_ids(log_file_path):
         return set(df['clip_id'])
     return set()
 
-def log_result(clip_id, logging_file_path, error_msg=None):
+def log_result(clip_id, logging_file_path, message=None):
     os.makedirs(os.path.dirname(logging_file_path), exist_ok=True)
     log_path = Path(logging_file_path)
     if log_path.suffix == ".txt":
@@ -36,9 +36,9 @@ def log_result(clip_id, logging_file_path, error_msg=None):
             writer = csv.writer(f)
             if not file_exists:
                 writer.writerow(["clip_id", "error_message"])
-            writer.writerow([clip_id, error_msg])
-    if error_msg is not None:
-        print(f"[ERROR] {clip_id} 실패 기록됨. 사유: {error_msg}")
+            writer.writerow([clip_id, message])
+    if message is not None:
+        print(f"{clip_id} message: {message}")
 
 def s3_complete_clip_exists(clip_id):
     """

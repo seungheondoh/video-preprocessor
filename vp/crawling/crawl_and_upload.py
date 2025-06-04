@@ -78,7 +78,8 @@ class Crawler:
         
         # ✅ 랜덤한 시간 지연 추가
         # sleep_time = random.uniform(0.5, 1.5)
-        sleep_time = random.uniform(2, 3)
+        # sleep_time = random.uniform(2, 3)
+        sleep_time = random.uniform(1, 2)
         print(f"[WAIT] {clip_id} 다운로드 전 대기 중... ({sleep_time:.2f}초)")
         time.sleep(sleep_time)
 
@@ -86,9 +87,10 @@ class Crawler:
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
+            log_result(clip_id, COMPLETED_LOG, '✅ Success')
         except Exception as e:
             error_msg = str(e).lower()
-            log_result(clip_id, FAILED_LOG, error_msg)
+            log_result(clip_id, FAILED_LOG, f'❌ Fail: {error_msg}')
             self.handle_error_message(error_msg, cookie_fn)
             return False
         return True
