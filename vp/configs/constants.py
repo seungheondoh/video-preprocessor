@@ -29,7 +29,8 @@ VIDEO_CSV_PATH = f'{DAFTPUNK_DIR}/db/videos.csv'
 YT_CLIP_INFO_JSON_PATH = f"{_PATH_TO_PROJECT_ROOT}/yt_dataset.json"
 
 # Log file path
-FAILED_LOG = f"{LOG_DIR}/failed_ids_clip.txt"
+# FAILED_LOG = f"{LOG_DIR}/failed_ids_clip.txt"
+FAILED_LOG = f"{LOG_DIR}/failed_ids.csv"
 UPLOAD_FAILED_LOG = f"{LOG_DIR}/upload_failed_ids.txt"
 COMPLETED_LOG = f"{LOG_DIR}/complete_clip_ids.txt"
 

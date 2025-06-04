@@ -46,7 +46,7 @@ class Crawler:
         with cookie_lock:
             if not available_cookie_indices:
                 print("❌ 모든 쿠키가 사용 불가 상태입니다. 작업을 중단합니다.")
-                sys.exit(1)
+                os._exit(1)
 
             index = random.choice(available_cookie_indices)
             return os.path.join(COOKIES_FILE_DIR, cookie_file_names[index])
@@ -67,7 +67,8 @@ class Crawler:
 
             # Return another available cookie
             return self.get_cookie_file_path()
-
+        elif 'video unavailable' in error_message.lower():
+            return
     
     def _ytlp_download(self, ydl_opts, video_id, clip_id=None):
         cookie_fn = self.get_cookie_file_path()
@@ -77,7 +78,7 @@ class Crawler:
         
         # ✅ 랜덤한 시간 지연 추가
         # sleep_time = random.uniform(0.5, 1.5)
-        sleep_time = random.uniform(1, 2)
+        sleep_time = random.uniform(2, 3)
         print(f"[WAIT] {clip_id} 다운로드 전 대기 중... ({sleep_time:.2f}초)")
         time.sleep(sleep_time)
 
@@ -221,7 +222,9 @@ class YTCralwer(Crawler):
                 if not os.path.exists(os.path.join(DOWNLOAD_DIR, vid, f"{vid}_clip_info.json"))
             ]
         elif self.do_download_audio:
-            video_ids = list(set(df['video_id'].tolist()))
+            failed = load_ids(FAILED_LOG)
+            completed = load_ids(COMPLETED_LOG)
+            video_ids = list(set(df['video_id'].tolist()) - set(failed) - set(completed))
             # Remove video_ids that already have .webm or .mp3 files in their directory
             filtered_video_ids = []
             for vid in video_ids:
@@ -247,7 +250,10 @@ class YTCralwer(Crawler):
         if self.do_download_audio or self.do_detect_music:
             clip_dir = os.path.join(DOWNLOAD_DIR, clip_id)
             mp4_path = None
-            mp3_path = os.path.join(clip_dir, f"{clip_id}.webm")
+            for ext in ['mp3', 'webm', 'm4a', 'wav']:
+                mp3_path = os.path.join(clip_dir, f"{clip_id}.{ext}")
+                if os.path.exists(mp3_path):
+                    break
             json_path = os.path.join(clip_dir, f"{clip_id}.info.json")
             return clip_dir, mp4_path, mp3_path, json_path
         else:
@@ -265,7 +271,11 @@ class YTCralwer(Crawler):
             'noplaylist': True,
             'quiet': True,
             'no_warnings': True,
-            'postprocessors': [],  # No conversion
+            'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3', # Download in mp3
+            'preferredquality': '192',
+            }],
             # 'writeinfojson': True,
         }
         return self._ytlp_download(ydl_opts, video_id)
@@ -326,6 +336,8 @@ class YTCralwer(Crawler):
         return True
     
 if __name__ == '__main__':
+    # print('sleep for about an hour...')
+    # time.sleep(5000)
     parser = argparse.ArgumentParser(description="YouTube Crawler")
     parser.add_argument('--crawler', type=str, choices=['mmtrailer', 'yt'])
     # TODO(minhee): This is only used for args.crawler=='yt' case. Clean these up.

@@ -1,22 +1,42 @@
 import os
 from tqdm import tqdm
 import boto3
+import pandas as pd
 
 from vp.configs.constants import *
+from pathlib import Path
+import csv
 
 s3 = boto3.client("s3")
 
 # FAILED_LOG txt file에 있는 이미 실패한 clip_id를 가져와서 다시 실행하지 않도록 함.
 def load_ids(log_file_path):
-    if os.path.exists(log_file_path):
+    log_file_path = Path(log_file_path)
+    if not os.path.exists(log_file_path):
+        return set()
+    
+    if log_file_path.suffix == '.txt':
         with open(log_file_path, "r", encoding="utf-8") as f:
             return set(line.strip() for line in f)
+    elif log_file_path.suffix == '.csv':
+        df = pd.read_csv(log_file_path)
+        return set(df['clip_id'])
     return set()
 
 def log_result(clip_id, logging_file_path, error_msg=None):
     os.makedirs(os.path.dirname(logging_file_path), exist_ok=True)
-    with open(logging_file_path, "a", encoding="utf-8") as f:
-        f.write(f"{clip_id}\n")
+    log_path = Path(logging_file_path)
+    if log_path.suffix == ".txt":
+        with open(logging_file_path, "a", encoding="utf-8") as f:
+            f.write(f"{clip_id}\n")
+    elif log_path.suffix == '.csv':
+        # Ensure CSV exists with header
+        file_exists = log_path.exists()
+        with open(logging_file_path, "a", encoding="utf-8", newline='') as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["clip_id", "error_message"])
+            writer.writerow([clip_id, error_msg])
     if error_msg is not None:
         print(f"[ERROR] {clip_id} 실패 기록됨. 사유: {error_msg}")
 

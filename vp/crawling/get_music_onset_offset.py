@@ -18,7 +18,6 @@ def get_clip_start_and_end(mp3_path, output_dir):
     # get music onset and offset using PANN
     logit_path = os.path.join(output_dir, os.path.splitext(os.path.basename(mp3_path))[0] + ".json")
     if not os.path.exists(logit_path):
-        os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6"
         print(f"🔍 PANN 추론 시작: {mp3_path}")
         try:
             extract_pann_logits(audio_path=mp3_path,
