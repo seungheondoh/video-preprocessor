@@ -315,21 +315,29 @@ class YTCralwer(Crawler):
         video_id, _, _, _ = video_info
         video_dir, _, mp3_path, _ = self.get_file_path(video_id)
         
+        # TODO(minhee): Code is too dirty fix this.
         if self.do_download_audio:
             # Download the full audio (audio only)
             success = self.download_audio_only(video_id)
             if not success:
                 return False
-            return self.s3_upload(video_info)
+            success = self.s3_upload(video_info)
+            if not success:
+                return False
         if self.do_detect_music:
             # Get clips' onset, offset (this includes PANN inference)
-            get_clip_start_and_end(mp3_path, video_dir)
+            success = get_clip_start_and_end(mp3_path, video_dir)
+            if not success:
+                return False
         # Download clip video, and extract audio
         if self.do_download_video:
-            self.download_clips_per_video(video_id)
+            success = self.download_clips_per_video(video_id)
+            if not success:
+                return False
         if self.do_upload_s3:
-            return self.s3_upload(video_info)
-        
+            success = self.s3_upload(video_info)
+            if not success:
+                return False
         return True
     
 if __name__ == '__main__':
