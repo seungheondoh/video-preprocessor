@@ -79,8 +79,8 @@ class Crawler:
         
         # ✅ 랜덤한 시간 지연 추가
         # sleep_time = random.uniform(0.5, 1.5)
-        # sleep_time = random.uniform(2, 3)
         sleep_time = random.uniform(1, 2)
+        # sleep_time = random.uniform(2, 3)
         print(f"[WAIT] {clip_id} 다운로드 전 대기 중... ({sleep_time:.2f}초)")
         time.sleep(sleep_time)
 
@@ -213,33 +213,24 @@ class YTCralwer(Crawler):
         self.do_download_audio = options[0]
         self.do_detect_music = options[1]
         self.do_download_video = options[2]
+        self.do_upload_s3 = options[3]
         super().__init__(dataset_path=dataset_path)
     
     def _init_data(self, dataset_path):
         df = pd.read_csv(dataset_path)
         # TODO(minhee): Find a good way to handle this, rather than dividing into cases like this.
-        if self.do_detect_music and not (self.do_download_audio or self.do_download_video):
+        if self.do_download_audio:
+            failed = load_ids(FAILED_LOG)
+            completed = load_ids(COMPLETED_LOG)
+            video_ids = list(set(df['video_id'].tolist()) - set(failed) - set(completed))
+        elif self.do_detect_music:
             video_ids = os.listdir(DOWNLOAD_DIR)
             video_ids = [
                 vid for vid in video_ids
                 if not os.path.exists(os.path.join(DOWNLOAD_DIR, vid, f"{vid}_clip_info.json"))
             ]
-        elif self.do_download_audio:
-            failed = load_ids(FAILED_LOG)
-            completed = load_ids(COMPLETED_LOG)
-            video_ids = list(set(df['video_id'].tolist()) - set(failed) - set(completed))
-            # Remove video_ids that already have .webm or .mp3 files in their directory
-            filtered_video_ids = []
-            for vid in video_ids:
-                vid_dir = os.path.join(DOWNLOAD_DIR, vid)
-                if not os.path.isdir(vid_dir):
-                    filtered_video_ids.append(vid)
-                    continue
-                files = os.listdir(vid_dir)
-                if not any(f.endswith('.webm') or f.endswith('.mp3') for f in files):
-                    filtered_video_ids.append(vid)
-            video_ids = filtered_video_ids
-        else:
+        elif self.do_download_video:
+            pass # TODO(minhee): Check this
             # Filter out already processed video_ids
             if os.path.exists(self.clip_info_json_path):
                 with open(self.clip_info_json_path, 'r') as f:
@@ -329,12 +320,15 @@ class YTCralwer(Crawler):
             success = self.download_audio_only(video_id)
             if not success:
                 return False
+            return self.s3_upload(video_info)
         if self.do_detect_music:
             # Get clips' onset, offset (this includes PANN inference)
             get_clip_start_and_end(mp3_path, video_dir)
         # Download clip video, and extract audio
         if self.do_download_video:
             self.download_clips_per_video(video_id)
+        if self.do_upload_s3:
+            return self.s3_upload(video_info)
         
         return True
     
@@ -347,6 +341,7 @@ if __name__ == '__main__':
     parser.add_argument('--do_download_audio', action='store_true')
     parser.add_argument('--do_detect_music', action='store_true')
     parser.add_argument('--do_download_video', action='store_true')
+    parser.add_argument('--do_upload_s3', action='store_true')
     parser.add_argument('--n_workers', type=int)
     args = parser.parse_args()
 
@@ -358,7 +353,8 @@ if __name__ == '__main__':
         do_download_audio = args.do_download_audio
         do_detect_music = args.do_detect_music
         do_download_video = args.do_download_video
-        crawler = YTCralwer(VIDEO_CSV_PATH, (do_download_audio, do_detect_music, do_download_video))
+        do_upload_s3 = args.do_upload_s3
+        crawler = YTCralwer(VIDEO_CSV_PATH, (do_download_audio, do_detect_music, do_download_video, do_upload_s3))
     else:
         raise ValueError("Invalid crawler type. Choose 'mmtrailer' or 'yt'.")
 
