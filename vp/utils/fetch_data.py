@@ -295,3 +295,49 @@ def crawl_s3_clips_from_file(clip_list_path, s3_bucket, s3_prefix, s3_client, lo
             print(f"⚠️ clip_id {clip_id} 다운로드 중 에러 발생: {e}")
 
     print(f"✅ 다운로드 완료! (mode: {mode})")
+    
+    
+def list_s3_folders_that_do_not_have_specific_file_type(s3_bucket, s3_prefix, s3_client, file_ext, save_path=None):
+    """
+    S3 버킷에서 특정 파일 확장자가 없는 폴더 리스트를 가져오는 함수.
+
+    Parameters:
+    - s3_bucket (str): S3 버킷 이름
+    - s3_prefix (str): 검색할 S3 prefix (ex: 'clips')
+    - s3_client (boto3.client): boto3의 S3 클라이언트 객체
+    - file_ext (str): 확인할 파일 확장자 (ex: '.json')
+    - save_path (str, optional): 결과를 저장할 로컬 파일 경로 (ex: 'folders_without_json.txt')
+
+    Returns:
+    - folders_without_file_type (list of str): 해당 파일이 없는 폴더 리스트
+    """
+    
+    file_type_existance_per_folder = {}
+    
+    paginator = s3_client.get_paginator('list_objects_v2')
+    pages = paginator.paginate(Bucket=s3_bucket, Prefix=s3_prefix)
+    
+    for page in pages:
+        for obj in page.get('Contents', []):
+            key = obj['Key']
+            parts = key.split('/')
+            if len(parts) >= 2 and parts[0] == s3_prefix:
+                clip_id = parts[1]
+                if clip_id not in file_type_existance_per_folder.keys():
+                    file_type_existance_per_folder[clip_id] = True
+                
+                file_name = parts[-1]
+                if file_name.endswith(file_ext):
+                    file_type_existance_per_folder[clip_id] = False
+            
+    # 저장 옵션
+    folders_without_file_type = [folder for folder, exists in file_type_existance_per_folder.items() if exists]
+    if save_path:
+        with open(save_path, 'w', encoding='utf-8') as f:
+            for folder in folders_without_file_type:
+                f.write(f"{folder}\n")
+        print(f"✅ 폴더 리스트 저장 완료: {save_path}")
+
+    print(f"총 {len(file_type_existance_per_folder)}개 중 {len(folders_without_file_type)}개 폴더가 '{file_ext}' 파일이 없습니다.")
+    
+    return folders_without_file_type
