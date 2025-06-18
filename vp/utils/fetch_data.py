@@ -124,7 +124,7 @@ def local_to_s3(local_clip_dir, clip_id, s3_bucket, s3_prefix, s3_client,
     return success
 
 
-def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client):
+def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, specific_ext=None):
     # 사용 예시:
     # success = s3_to_local_clip_id(
     #     clip_id="-_3bKbYqbvQ_0000376",
@@ -165,6 +165,11 @@ def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_clie
 
             _, filename = key.rsplit('/', 1)
             local_path = os.path.join(local_dir, filename)
+            
+            if specific_ext:
+                _, ext = os.path.splitext(filename)
+                if ext.lower() != specific_ext.lower():
+                    continue
 
             try:
                 s3_client.download_file(s3_bucket, key, local_path)
@@ -178,57 +183,19 @@ def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_clie
 
     return found_any
 
-def download_mp4_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client):
-    # S3에서 clip_id 폴더의 mp4 파일만 로컬로 다운로드
-    return _download_specific_filetype_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, target_ext=".mp4")
+def download_specific_filetype_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, specific_ext):
+    """
+    S3에 저장된 하나의 clip_id 폴더에서 특정 확장자 파일을 로컬로 다운로드하는 함수.
 
-def download_mp3_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client):
-    # S3에서 clip_id 폴더의 mp3 파일만 로컬로 다운로드
-    return _download_specific_filetype_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, target_ext=".mp3")
-
-def download_json_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client):
-    # S3에서 clip_id 폴더의 json 파일만 로컬로 다운로드
-    return _download_specific_filetype_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, target_ext=".json")
-
-def _download_specific_filetype_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, target_ext):
-    # 내부 공통 함수: S3에서 특정 확장자 파일만 다운로드
-    s3_dir_prefix = f"{s3_prefix}/{clip_id}/"
-    local_dir = os.path.join(local_clip_dir, clip_id)
-
-    # 로컬 폴더 없으면 생성
-    os.makedirs(local_dir, exist_ok=True)
-
-    # S3에서 파일 리스트 가져오기
-    paginator = s3_client.get_paginator('list_objects_v2')
-    pages = paginator.paginate(Bucket=s3_bucket, Prefix=s3_dir_prefix)
-
-    found_any = False
-
-    for page in pages:
-        for obj in page.get('Contents', []):
-            key = obj['Key']
-            if key.endswith('/'):
-                continue  # 디렉토리 스킵
-
-            _, filename = key.rsplit('/', 1)
-            _, ext = os.path.splitext(filename)
-
-            if ext.lower() != target_ext:
-                continue  # 원하는 확장자 아니면 스킵
-
-            local_path = os.path.join(local_dir, filename)
-
-            try:
-                s3_client.download_file(s3_bucket, key, local_path)
-                print(f"✅ 다운로드 완료: {key} → {local_path}")
-                found_any = True
-            except Exception as e:
-                print(f"❌ 다운로드 실패: {key}, 사유: {e}")
-
-    if not found_any:
-        print(f"⚠️ S3에서 clip_id {clip_id}에 대해 '{target_ext}' 파일을 찾을 수 없습니다.")
-
-    return found_any
+    Parameters:
+    - clip_id (str): 다운로드할 클립 ID
+    - local_clip_dir (str): 로컬 상위 디렉토리 경로 (ex: '/downloads')
+    - s3_bucket (str): 다운로드 대상 S3 버킷 이름
+    - s3_prefix (str): S3 내 저장된 경로 prefix (ex: 'clips')
+    - s3_client (boto3.client): boto3의 S3 클라이언트 객체
+    - specific_ext (str): 다운로드할 파일 확장자 (ex: '.mp4', '.mp3', '.json')
+    """
+    return download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, specific_ext)
 
 
 def list_s3_clip_ids(s3_bucket, s3_prefix, s3_client, save_path=None):
@@ -301,6 +268,13 @@ def crawl_s3_clips_from_file(clip_list_path, s3_bucket, s3_prefix, s3_client, lo
     - local_clip_dir (str): 다운로드할 로컬 상위 폴더 경로
     - mode (str): "mp4", "mp3", "json", "all" 중 선택
     """
+    if isinstance(mode, str) and not mode[0] == '.':
+        mode = f'.{mode}'
+    
+    supported_modes = [".mp4", ".mp3", ".json", "all"]
+    if mode not in supported_modes:
+        print(f"❌ 잘못된 mode 입력: {mode}. ('mp4', 'mp3', 'json', 'all' 중 하나여야 합니다.)")
+        return
 
     # 1. clip_id 리스트 불러오기
     if not os.path.exists(clip_list_path):
@@ -311,24 +285,12 @@ def crawl_s3_clips_from_file(clip_list_path, s3_bucket, s3_prefix, s3_client, lo
         clip_ids = [line.strip() for line in f if line.strip()]
 
     print(f"🎯 총 {len(clip_ids)}개의 clip_id 대상 다운로드 시작합니다. (mode: {mode})")
-    
-    # 일부만 다운로드 하고 싶은 경우 여기서 clip_ids 리스트를 조절
-    clip_ids = clip_ids[:5]
-
     # 2. 각 clip_id마다 다운로드 수행
     for clip_id in tqdm(clip_ids, desc="Downloading clips"):
         try:
-            if mode == "mp4":
-                download_mp4_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client)
-            elif mode == "mp3":
-                download_mp3_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client)
-            elif mode == "json":
-                download_json_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client)
-            elif mode == "all":
-                download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client)
-            else:
-                print(f"❌ 잘못된 mode 입력: {mode}. ('mp4', 'mp3', 'json', 'all' 중 하나여야 합니다.)")
-                return
+            if mode == "all":
+                mode = None
+            download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, specific_ext=mode)
         except Exception as e:
             print(f"⚠️ clip_id {clip_id} 다운로드 중 에러 발생: {e}")
 
