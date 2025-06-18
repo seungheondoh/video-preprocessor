@@ -78,9 +78,7 @@ class Crawler:
             clip_id = video_id
         
         # ✅ 랜덤한 시간 지연 추가
-        # sleep_time = random.uniform(0.5, 1.5)
-        sleep_time = random.uniform(1, 2)
-        # sleep_time = random.uniform(2, 3)
+        sleep_time = random.uniform(0.5, 1.0)
         print(f"[WAIT] {clip_id} 다운로드 전 대기 중... ({sleep_time:.2f}초)")
         time.sleep(sleep_time)
 
@@ -117,7 +115,7 @@ class Crawler:
             'outtmpl': mp4_template,
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
             'merge_output_format': 'mp4',
-            # 'writeinfojson': True,
+            # 'writeinfojson': True, # TODO(minhee): Unhide this later
             'force_keyframes_at_cuts': True,
             'postprocessors': [],
         }
@@ -207,13 +205,13 @@ class MMTrailerCrawler(Crawler):
         return False
     
 class YTCralwer(Crawler):
-    def __init__(self, dataset_path, options):
+    def __init__(self, dataset_path, **kwargs):
         self.clip_info_json_path = YT_CLIP_INFO_JSON_PATH
         self.clip_info_list = []
-        self.do_download_audio = options[0]
-        self.do_detect_music = options[1]
-        self.do_download_video = options[2]
-        self.do_upload_s3 = options[3]
+        self.do_download_audio = kwargs.get('do_download_audio', False)
+        self.do_detect_music = kwargs.get('do_detect_music', False)
+        self.do_download_video = kwargs.get('do_download_video', False)
+        self.do_upload_s3 = kwargs.get('do_upload_s3', False)
         super().__init__(dataset_path=dataset_path)
     
     def _init_data(self, dataset_path):
@@ -358,11 +356,13 @@ if __name__ == '__main__':
     if args.crawler == 'mmtrailer':
         crawler = MMTrailerCrawler(JSON_PATH)
     elif args.crawler == 'yt':
-        do_download_audio = args.do_download_audio
-        do_detect_music = args.do_detect_music
-        do_download_video = args.do_download_video
-        do_upload_s3 = args.do_upload_s3
-        crawler = YTCralwer(VIDEO_CSV_PATH, (do_download_audio, do_detect_music, do_download_video, do_upload_s3))
+        kwargs = {
+            'do_download_audio': args.do_download_audio,
+            'do_detect_music': args.do_detect_music,
+            'do_download_video': args.do_download_video,
+            'do_upload_s3': args.do_upload_s3
+        }
+        crawler = YTCralwer(VIDEO_CSV_PATH, **kwargs)
     else:
         raise ValueError("Invalid crawler type. Choose 'mmtrailer' or 'yt'.")
 
