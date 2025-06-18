@@ -24,26 +24,34 @@ def convert_audio(wav, original_rate, target_rate):
 def extract_bendit_logits():
     pass
 
-def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_rate=32000):
+def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_rate=32000, model=None):
     from vp.annotation.modules.panns import Cnn14
-    model_path = os.path.join(ckpt_dir, "Cnn14_mAP=0.431.pth")
-    if not(os.path.exists(model_path)):
-        torch.hub.download_url_to_file(
-            url='https://zenodo.org/record/3987831/files/Cnn14_mAP=0.431.pth',
-            dst=model_path
-        )
-    model = Cnn14(
-        sample_rate=sample_rate,
-        window_size=1024,
-        hop_size=320,
-        mel_bins=64,
-        fmin=50,
-        fmax=16000,
-        classes_num=527
-    )
-    checkpoint = torch.load(model_path, map_location=device)
-    model.load_state_dict(checkpoint['model'])
-    model.eval()
+
+    # Use a static variable to cache the loaded model
+    if not hasattr(extract_pann_logits, "_static_model") or model is not None:
+        model_path = os.path.join(ckpt_dir, "Cnn14_mAP=0.431.pth")
+        if not os.path.exists(model_path):
+            torch.hub.download_url_to_file(
+                url='https://zenodo.org/record/3987831/files/Cnn14_mAP=0.431.pth',
+                dst=model_path
+            )
+        if model is None:
+            model = Cnn14(
+                sample_rate=sample_rate,
+                window_size=1024,
+                hop_size=320,
+                mel_bins=64,
+                fmin=50,
+                fmax=16000,
+                classes_num=527
+            )
+            checkpoint = torch.load(model_path, map_location=device)
+            model.load_state_dict(checkpoint['model'])
+            model.eval()
+        extract_pann_logits._static_model = model
+    else:
+        model = extract_pann_logits._static_model
+
     cur_audio, input_sr = librosa.load(audio_path, mono=True, sr=None, res_type='kaiser_fast')
     cur_audio = convert_audio(wav=torch.from_numpy(cur_audio), original_rate=input_sr, target_rate=sample_rate)
     # model inference
