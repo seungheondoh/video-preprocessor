@@ -47,6 +47,7 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
             )
             checkpoint = torch.load(model_path, map_location=device)
             model.load_state_dict(checkpoint['model'])
+            model.to(device)
             model.eval()
         extract_pann_logits._static_model = model
     else:
@@ -57,7 +58,7 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
     # model inference
     print(cur_audio.shape)
     with torch.no_grad():
-        out = model(torch.tensor(cur_audio).float(), None)
+        out = model(torch.as_tensor(cur_audio, dtype=torch.float32, device=device), None)
     music_logits = out["clipwise_output"][:, MUSIC_INDEX]
     results = []
     for idx, logit in enumerate(music_logits):
