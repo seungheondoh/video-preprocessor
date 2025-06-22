@@ -32,14 +32,13 @@ available_cookie_indices = manager.list(list(range(len(cookie_file_names))))
 MAX_PROCS_PER_GPU = 2
 NUM_GPUS = torch.cuda.device_count()
 MAX_GPU_PROCS = NUM_GPUS * MAX_PROCS_PER_GPU
-process_base_num = 0 # TODO(minhee): This is a temporary solution. Instead of this support using semaphore.
 def get_assigned_device():
     if not torch.cuda.is_available():
         return 'cpu'
 
     proc_id = int(current_process()._identity[0]) if current_process()._identity else 0
 
-    if proc_id - process_base_num < MAX_GPU_PROCS:
+    if proc_id < MAX_GPU_PROCS:
         assigned_gpu = proc_id % NUM_GPUS
         return f'cuda:{assigned_gpu}'
     else:
@@ -57,9 +56,9 @@ def extract_audio(mp4_path, mp3_path):
 
 class Crawler:
     def __init__(self, dataset_path=None):
-        self._init_data(dataset_path)
+        self.dataset_path = dataset_path
 
-    def _init_data(self, dataset_path):
+    def init_data(self):
         raise NotImplementedError
 
     def get_cookie_file_path(self):
@@ -189,19 +188,21 @@ class Crawler:
         raise NotImplementedError("process() must be implemented by subclasses")
 
     def run(self):
-        if self.data is None or len(self.data) == 0:
-            return
-        print(f"🔍 처리할 clip_id 수: {len(self.data)}")
         with Pool(NUM_WORKERS) as pool:
-            with tqdm(total=len(self.data), desc="crawl_and_upload.py") as pbar:
-                for _ in pool.imap_unordered(self.process, self.data):
-                    pbar.update(1)
+            while True:
+                self.init_data()  # Reinitialize data after processing
+                if self.data is None or len(self.data) == 0:
+                    return
+                print(f"🔍 처리할 clip_id 수: {len(self.data)}")
+                with tqdm(total=len(self.data), desc="crawl_and_upload.py") as pbar:
+                    for _ in pool.imap_unordered(self.process, self.data):
+                        pbar.update(1)
 
 class MMTrailerCrawler(Crawler):
     def __init__(self, dataset_path):
         super().__init__(dataset_path=dataset_path)
     
-    def _init_data(self, dataset_path):
+    def init_data(self):
         def refine(item):
             video_id = item['video_id']
             clip_id = item['clip_id']
@@ -209,7 +210,7 @@ class MMTrailerCrawler(Crawler):
             fps = item['video_fps']
             return (video_id, clip_id, start_frame / fps, end_frame / fps)
 
-        with open(dataset_path, "r", encoding="utf-8") as f:
+        with open(self.dataset_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         failed = load_ids(FAILED_LOG)
@@ -237,12 +238,12 @@ class YTCralwer(Crawler):
             self.generate_clip_info_json()
         super().__init__(dataset_path=dataset_path)
     
-    def _init_data(self, dataset_path):
+    def init_data(self):
         self.data = None
         
         # TODO(minhee): Find a good way to handle this, rather than dividing into cases like this.
         if self.do_download_audio:
-            df = pd.read_csv(dataset_path)
+            df = pd.read_csv(self.dataset_path)
             video_ids = set([vid for vid in df['video_id'].tolist() if not os.path.exists(get_file_path(vid)['music_on_off_info_json_path'])])
             
             # TODO(minhee): Remove this later
@@ -267,7 +268,7 @@ class YTCralwer(Crawler):
                 file_ext='.mp4'
             )
             
-            if os.path.exists(dataset_path):
+            if os.path.exists(self.dataset_path):
                 with open(self.clip_info_json_path, 'r') as f:
                     self.clip_info_list = json.load(f)
             else:
@@ -388,27 +389,22 @@ if __name__ == '__main__':
     parser.add_argument('--upload_exclude_exts', type=list)
     args = parser.parse_args()
 
-    while True:
-        if args.n_workers is not None:
-            NUM_WORKERS = args.n_workers
-        if args.crawler == 'mmtrailer':
-            crawler = MMTrailerCrawler(JSON_PATH)
-        elif args.crawler == 'yt':
-            kwargs = {
-                'do_download_audio': args.do_download_audio,
-                'do_detect_music': args.do_detect_music,
-                'do_download_clip': args.do_download_clip,
-                'do_upload_s3': args.do_upload_s3,
-                'do_generate_clip_info_json': args.do_generate_clip_info_json,
-                'pann_max_batch_size': args.pann_max_batch_size,
-                'upload_exclude_exts': args.upload_exclude_exts,
-            }
-            crawler = YTCralwer(VIDEO_CSV_PATH, **kwargs)
-        else:
-            raise ValueError("Invalid crawler type. Choose 'mmtrailer' or 'yt'.")
+    if args.n_workers is not None:
+        NUM_WORKERS = args.n_workers
+    if args.crawler == 'mmtrailer':
+        crawler = MMTrailerCrawler(JSON_PATH)
+    elif args.crawler == 'yt':
+        kwargs = {
+            'do_download_audio': args.do_download_audio,
+            'do_detect_music': args.do_detect_music,
+            'do_download_clip': args.do_download_clip,
+            'do_upload_s3': args.do_upload_s3,
+            'do_generate_clip_info_json': args.do_generate_clip_info_json,
+            'pann_max_batch_size': args.pann_max_batch_size,
+            'upload_exclude_exts': args.upload_exclude_exts,
+        }
+        crawler = YTCralwer(VIDEO_CSV_PATH, **kwargs)
+    else:
+        raise ValueError("Invalid crawler type. Choose 'mmtrailer' or 'yt'.")
 
-        if crawler.data is None or len(crawler.data) == 0:
-            break
-        crawler.run()
-        
-        process_base_num += NUM_WORKERS # TODO(minhee): This is a temporary solution. Instead of this support using semaphore.
+    crawler.run()
