@@ -59,6 +59,9 @@ def get_file_path(clip_id):
     
     file_path_dict = {}
     for key, suffix in suffix_dict.items():
-        file_path_dict[key] = os.path.join(DOWNLOAD_DIR, clip_id, f"{clip_id}{suffix}")
+        if key == "clip_dir":
+            file_path_dict[key] = os.path.join(DOWNLOAD_DIR, clip_id)
+        else:
+            file_path_dict[key] = os.path.join(DOWNLOAD_DIR, clip_id, f"{clip_id}{suffix}")
     
     return file_path_dict

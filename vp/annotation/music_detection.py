@@ -87,7 +87,7 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
             print(f"Music detected in {audio_path}")
             break
         
-    video_id = os.path.splitext(os.path.basename(audio_path))[0]
+    video_id = Path(audio_path).parent.name
     results_path = Path(output_dir) / Path(get_file_path(video_id)['panns_inference_json_path'])
     results_path.parent.mkdir(parents=True, exist_ok=True)
     with open(os.path.join(output_dir, results_path), "w") as f:

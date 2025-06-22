@@ -179,7 +179,6 @@ def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_clie
         s3_dir_prefix = f"{s3_prefix}/"
     else:
         s3_dir_prefix = f"{s3_prefix}/{clip_id}/"
-    local_dir = os.path.join(local_clip_dir, clip_id)
 
     # S3에서 파일 리스트 가져오기
     paginator = s3_client.get_paginator('list_objects_v2')
@@ -194,7 +193,7 @@ def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_clie
                 continue  # 디렉토리 스킵
 
             file_relative_path = key.split('/', 1)[1] if '/' in key else key
-            local_path = os.path.join(local_dir, file_relative_path)
+            local_path = os.path.join(local_clip_dir, file_relative_path)
             
             if specific_ext and not file_relative_path.endswith(specific_ext):
                 continue
@@ -206,7 +205,7 @@ def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_clie
                 continue
             try:
                 # 로컬 폴더 없으면 생성
-                os.makedirs(Path(local_path).parent, exist_ok=True)
+                Path(local_path).parent.mkdir(parents=True, exist_ok=True)
                 s3_client.download_file(s3_bucket, key, local_path)
                 # TODO(minhee): REMOVE THIS LATER
                 if local_path.endswith('.mp3') and not local_path.endswith('_audio.mp3'):
@@ -267,6 +266,9 @@ def list_s3_clip_ids(s3_bucket, s3_prefix, s3_client, save_path=None, file_ext='
     for page in pages:
         for obj in page.get('Contents', []):
             key = obj['Key']
+            if key.endswith('/'):
+                continue  # 디렉토리 스킵
+            
             parts = key.split('/')
             if len(parts) >= 2 and parts[0] == s3_prefix:
                 clip_id = parts[1]

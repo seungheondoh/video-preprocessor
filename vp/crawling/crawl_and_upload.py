@@ -189,6 +189,8 @@ class Crawler:
         raise NotImplementedError("process() must be implemented by subclasses")
 
     def run(self):
+        if self.data is None or len(self.data) == 0:
+            return
         print(f"🔍 처리할 clip_id 수: {len(self.data)}")
         with Pool(NUM_WORKERS) as pool:
             with tqdm(total=len(self.data), desc="crawl_and_upload.py") as pbar:
@@ -236,21 +238,26 @@ class YTCralwer(Crawler):
         super().__init__(dataset_path=dataset_path)
     
     def _init_data(self, dataset_path):
+        self.data = None
+        
         # TODO(minhee): Find a good way to handle this, rather than dividing into cases like this.
         if self.do_download_audio:
             df = pd.read_csv(dataset_path)
-            failed = load_ids(FAILED_LOG)
-            completed = load_ids(COMPLETED_LOG)
-            video_ids = list(set(df['video_id'].tolist()) - set(failed) - set(completed))
-            self.data = [(video_id, video_id) for video_id in video_ids]
+            video_ids = set([vid for vid in df['video_id'].tolist() if not os.path.exists(get_file_path(vid)['music_on_off_info_json_path'])])
+            
+            # TODO(minhee): Remove this later
+            with open('mp3_clip_ids_without_json.txt', 'r') as f:
+                mp3_clip_ids_without_json = set([line.strip() for line in f if line.strip()])
+            video_ids = video_ids - mp3_clip_ids_without_json
+            # TODO(minhee): Remove this later
+            
+            self.data = [(video_id, video_id, None, None) for video_id in video_ids]
         elif self.do_detect_music:
             existing_ids = os.listdir(DOWNLOAD_DIR)
-            video_ids = [
-                vid for vid in existing_ids \
-                if (os.path.exists(get_file_path(vid)['mp3_path']) and \
-                    # TODO(minhee): Remove the replacing part later
-                not os.path.exists(get_file_path(vid)['music_on_off_info_json_path']))
-            ]
+            video_ids = []
+            for vid in existing_ids:
+                if os.path.exists(get_file_path(vid)['mp3_path']) and not os.path.exists(get_file_path(vid)['music_on_off_info_json_path']):
+                    video_ids.append(vid)
             self.data = [(video_id, video_id, None, None) for video_id in video_ids]
         elif self.do_download_clip:
             clips_ids_already_uploaded = list_s3_clip_ids_that_have_specific_file_type(
@@ -275,6 +282,7 @@ class YTCralwer(Crawler):
                 if clip_id not in clips_ids_already_uploaded:
                     self.data.append((video_id, clip_id, start_sec, end_sec))
         elif self.do_upload_s3:
+            # TODO(minhee): Refine this to get already uploaded clip ids and remove them from the list.
             video_ids = os.listdir(DOWNLOAD_DIR)
             self.data = [(video_id, video_id, None, None) for video_id in video_ids]
         
@@ -297,15 +305,19 @@ class YTCralwer(Crawler):
             'preferredquality': '192',
             }],
         }
-        return self._ytlp_download(ydl_opts, video_id)
+        if not self._ytlp_download(ydl_opts, video_id):
+            return False
+        yt_mp3_path = os.path.join(output_dir, f"{video_id}.mp3")
+        os.rename(yt_mp3_path, mp3_path)
+        return True
     
     def generate_clip_info_json(self):
         # music onset and offset info json path
         music_on_off_info_json_suffix = get_file_path("")['music_on_off_info_json_path']
-        json_info_dir = Path("music_on_off_info_json_dir") # TODO(minhee): Fix this
+        json_info_dir = Path(DOWNLOAD_DIR)
         # download_clip_from_s3("", json_info_dir, S3_BUCKET, S3_PREFIX, s3, specific_ext=music_on_off_info_json_suffix)
         
-        for json_file in tqdm(list(json_info_dir.glob(f"*{music_on_off_info_json_suffix}"))):
+        for json_file in tqdm(list(json_info_dir.rglob(f"*{music_on_off_info_json_suffix}"))):
             video_id = json_file.relative_to(json_info_dir).parts[0]
             with open(json_file, 'r') as f:
                 music_onset_offset = json.load(f)
@@ -316,7 +328,7 @@ class YTCralwer(Crawler):
                     dict_item = {
                         "video_id": video_id,
                         "clip_id": new_clip_id,
-                        "clip_start_end_sec": (clip_start, clip_end),
+                        "clip_start_end_sec": [clip_start, clip_end],
                     }
                     self.clip_info_list.append(dict_item)
                     break # Since we only use the first clip onset and offset info for each video_id
@@ -395,7 +407,7 @@ if __name__ == '__main__':
         else:
             raise ValueError("Invalid crawler type. Choose 'mmtrailer' or 'yt'.")
 
-        if len(crawler.data) == 0:
+        if crawler.data is None or len(crawler.data) == 0:
             break
         crawler.run()
         

@@ -1,6 +1,7 @@
 import os
 import json
 import numpy as np
+from pathlib import Path
 
 from vp.annotation.music_detection import extract_pann_logits
 from vp.configs.constants import *
@@ -11,8 +12,7 @@ def get_clip_start_and_end(mp3_path, output_dir, max_batch_size=None, device='cu
             print(f'mp3_path {mp3_path} does not exist.')
             return
     
-    # TODO(minhee): Handle file path in noble way... And avoid hardcoding
-    video_id = mp3_path.split('/')[-2]
+    video_id = Path(mp3_path).parent.name
     clip_onset_offset_path = get_file_path(video_id)['music_on_off_info_json_path']
     if os.path.exists(clip_onset_offset_path):
         return
