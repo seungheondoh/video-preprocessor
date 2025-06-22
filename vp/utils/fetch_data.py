@@ -40,13 +40,12 @@ def log_result(clip_id, logging_file_path, message=None):
     if message is not None:
         print(f"{clip_id} message: {message}")
 
-def s3_complete_clip_exists(clip_id):
+def s3_complete_clip_exists(clip_id, required_exts={".mp4", ".mp3", ".json"}):
     """
     S3에 clip_id 폴더가 존재하고, mp4, mp3, json 파일이 모두 있을 경우 True
     그렇지 않으면 False (즉, 덮어쓰기 대상)
     """
     prefix = f"{S3_PREFIX}/{clip_id}/"
-    required_exts = {".mp4", ".mp3", ".json"}
 
     paginator = s3.get_paginator('list_objects_v2')
     pages = paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix)
@@ -71,22 +70,27 @@ def upload_to_s3(local_path, s3_key):
         return False
 
 # S3 저장소에 로컬에 저장된 파일을 업로드
-def upload_clip_folder(clip_id):
+def upload_clip_folder(clip_id, s3_prefix, exclude_exts):
     local_dir = os.path.join(DOWNLOAD_DIR, clip_id)
     if not os.path.exists(local_dir):
         return False
 
-    # ✅ S3에 완전한 클립이 존재하면 스킵
-    if s3_complete_clip_exists(clip_id):
-        print(f"🚫 S3에 완전한 클립이 이미 존재함 → 스킵: {clip_id}")
-        log_result(clip_id, COMPLETED_LOG)
-        return True
+    # TODO(minhee): unhide this later
+    # # ✅ S3에 완전한 클립이 존재하면 스킵
+    # if s3_complete_clip_exists(clip_id):
+    #     print(f"🚫 S3에 완전한 클립이 이미 존재함 → 스킵: {clip_id}")
+    #     log_result(clip_id, COMPLETED_LOG)
+    #     return True
 
     print(f"⏫ 업로드 시작: {clip_id}")
     success = True
     for fname in os.listdir(local_dir):
+        ext = os.path.splitext(fname)[1].lower()
+        if ext in exclude_exts:
+            print(f"🚫 제외된 확장자 파일 → 스킵: {fname}")
+            continue
         local_path = os.path.join(local_dir, fname)
-        s3_key = f"{S3_PREFIX}/{clip_id}/{fname}"
+        s3_key = f"{s3_prefix}/{clip_id}/{fname}"
         if not upload_to_s3(local_path, s3_key):
             success = False
 
@@ -144,7 +148,7 @@ def local_to_s3(local_clip_dir, clip_id, s3_bucket, s3_prefix, s3_client,
     return success
 
 
-def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, specific_ext=None):
+def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, specific_ext=None, do_overwrite=False):
     # 사용 예시:
     # success = s3_to_local_clip_id(
     #     clip_id="-_3bKbYqbvQ_0000376",
@@ -153,6 +157,7 @@ def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_clie
     #     s3_prefix="chopin16",
     #     s3_client=s3
     # )
+    """clip_id를 ''(empty string)로 주면 S3에 저장된 모든 clip_id 폴더를 다운로드합니다."""
     
     """
     S3에 저장된 하나의 clip_id 폴더(mp4, mp3, json)를 로컬로 다운로드하는 함수.
@@ -164,12 +169,12 @@ def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_clie
     - s3_prefix (str): S3 내 저장된 경로 prefix (ex: 'clips')
     - s3_client (boto3.client): boto3의 S3 클라이언트 객체
     """
-
-    s3_dir_prefix = f"{s3_prefix}/{clip_id}/"
+    # Support downloading all files in the S3 directory
+    if len(clip_id) == 0:
+        s3_dir_prefix = f"{s3_prefix}/"
+    else:
+        s3_dir_prefix = f"{s3_prefix}/{clip_id}/"
     local_dir = os.path.join(local_clip_dir, clip_id)
-
-    # 로컬 폴더 없으면 생성
-    os.makedirs(local_dir, exist_ok=True)
 
     # S3에서 파일 리스트 가져오기
     paginator = s3_client.get_paginator('list_objects_v2')
@@ -177,21 +182,26 @@ def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_clie
 
     found_any = False
 
-    for page in pages:
+    for page in tqdm(pages):
         for obj in page.get('Contents', []):
             key = obj['Key']
             if key.endswith('/'):
                 continue  # 디렉토리 스킵
 
-            _, filename = key.rsplit('/', 1)
-            local_path = os.path.join(local_dir, filename)
+            file_relative_path = key.split('/', 1)[1] if '/' in key else key
+            local_path = os.path.join(local_dir, file_relative_path)
             
-            if specific_ext:
-                _, ext = os.path.splitext(filename)
-                if ext.lower() != specific_ext.lower():
-                    continue
-
+            if specific_ext and not file_relative_path.endswith(specific_ext):
+                continue
+            
+            # 이미 존재하면 스킵
+            if os.path.exists(local_path) and not do_overwrite:
+                print(f"⚠️ 이미 존재함: {local_path} → 스킵")
+                found_any = True
+                continue
             try:
+                # 로컬 폴더 없으면 생성
+                os.makedirs(Path(local_path).parent, exist_ok=True)
                 s3_client.download_file(s3_bucket, key, local_path)
                 print(f"✅ 다운로드 완료: {key} → {local_path}")
                 found_any = True
@@ -203,7 +213,7 @@ def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_clie
 
     return found_any
 
-def download_specific_filetype_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, specific_ext):
+def download_specific_filetype_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, specific_ext, do_overwrite=False):
     """
     S3에 저장된 하나의 clip_id 폴더에서 특정 확장자 파일을 로컬로 다운로드하는 함수.
 
@@ -215,7 +225,7 @@ def download_specific_filetype_from_s3(clip_id, local_clip_dir, s3_bucket, s3_pr
     - s3_client (boto3.client): boto3의 S3 클라이언트 객체
     - specific_ext (str): 다운로드할 파일 확장자 (ex: '.mp4', '.mp3', '.json')
     """
-    return download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, specific_ext)
+    return download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_client, specific_ext, do_overwrite=do_overwrite)
 
 
 def list_s3_clip_ids(s3_bucket, s3_prefix, s3_client, save_path=None):
@@ -317,9 +327,9 @@ def crawl_s3_clips_from_file(clip_list_path, s3_bucket, s3_prefix, s3_client, lo
     print(f"✅ 다운로드 완료! (mode: {mode})")
     
     
-def list_s3_folders_that_do_not_have_specific_file_type(s3_bucket, s3_prefix, s3_client, file_ext, save_path=None):
+def list_s3_folders_that_have_specific_file_type(s3_bucket, s3_prefix, s3_client, file_ext, save_path=None):
     """
-    S3 버킷에서 특정 파일 확장자가 없는 폴더 리스트를 가져오는 함수.
+    S3 버킷에서 특정 파일 확장자가 있는 폴더 리스트를 가져오는 함수.
 
     Parameters:
     - s3_bucket (str): S3 버킷 이름
@@ -344,20 +354,20 @@ def list_s3_folders_that_do_not_have_specific_file_type(s3_bucket, s3_prefix, s3
             if len(parts) >= 2 and parts[0] == s3_prefix:
                 clip_id = parts[1]
                 if clip_id not in file_type_existance_per_folder.keys():
-                    file_type_existance_per_folder[clip_id] = True
+                    file_type_existance_per_folder[clip_id] = False
                 
                 file_name = parts[-1]
                 if file_name.endswith(file_ext):
-                    file_type_existance_per_folder[clip_id] = False
+                    file_type_existance_per_folder[clip_id] = True
             
     # 저장 옵션
-    folders_without_file_type = [folder for folder, exists in file_type_existance_per_folder.items() if exists]
+    folders_with_file_type = [folder for folder, exists in file_type_existance_per_folder.items() if exists]
     if save_path:
         with open(save_path, 'w', encoding='utf-8') as f:
-            for folder in folders_without_file_type:
+            for folder in folders_with_file_type:
                 f.write(f"{folder}\n")
         print(f"✅ 폴더 리스트 저장 완료: {save_path}")
 
-    print(f"총 {len(file_type_existance_per_folder)}개 중 {len(folders_without_file_type)}개 폴더가 '{file_ext}' 파일이 없습니다.")
+    print(f"총 {len(file_type_existance_per_folder)}개 중 {len(folders_with_file_type)}개 폴더가 '{file_ext}' 파일이 있습니다.")
     
-    return folders_without_file_type
+    return folders_with_file_type
