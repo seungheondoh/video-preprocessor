@@ -7,24 +7,32 @@ import julius
 import numpy as np
 
 from vp.annotation.modules.panns import MUSIC_INDEX
-from vp.configs.constants import PANN_CLIP_DURATION_SEC
+from vp.configs.constants import PANN_CLIP_DURATION_SEC, MUSIC_LOGIT_THRESHOLD
 
-def convert_audio(wav, original_rate, target_rate):
+def convert_audio(wav, original_rate, target_rate, max_batch_size):
     if original_rate != target_rate:
         wav = julius.resample_frac(wav, original_rate, target_rate)
     # Split audio into chunks of PANN_CLIP_DURATION_SEC
-    chunk_size = PANN_CLIP_DURATION_SEC * target_rate
-    chunks = []
-    for i in range(0, len(wav), chunk_size):
-        chunk = wav[i:i + chunk_size]
-        if len(chunk) == chunk_size:
-            chunks.append(chunk)
-    return np.stack(chunks)
+    chunk_size = int(PANN_CLIP_DURATION_SEC * target_rate)
+    total_chunks = len(wav) // chunk_size
+    if max_batch_size is None or max_batch_size <= 0:
+        max_batch_size = total_chunks if total_chunks > 0 else 1
+
+    for batch_idx in range(0, total_chunks, max_batch_size):
+        chunks = []
+        for chunk_idx in range(batch_idx, min(batch_idx + max_batch_size, total_chunks)):
+            start = chunk_idx * chunk_size
+            end = start + chunk_size
+            chunk = wav[start:end]
+            if len(chunk) == chunk_size:
+                chunks.append(chunk)
+        if chunks:
+            yield np.stack(chunks)
 
 def extract_bendit_logits():
     pass
 
-def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_rate=32000, model=None):
+def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_rate=32000, model=None, max_batch_size=None):
     from vp.annotation.modules.panns import Cnn14
 
     # Use a static variable to cache the loaded model
@@ -48,24 +56,35 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
             checkpoint = torch.load(model_path, map_location=device)
             model.load_state_dict(checkpoint['model'])
             model.eval()
+            model.to(device)
         extract_pann_logits._static_model = model
     else:
         model = extract_pann_logits._static_model
 
     cur_audio, input_sr = librosa.load(audio_path, mono=True, sr=None, res_type='kaiser_fast')
-    cur_audio = convert_audio(wav=torch.from_numpy(cur_audio), original_rate=input_sr, target_rate=sample_rate)
-    # model inference
-    print(cur_audio.shape)
-    with torch.no_grad():
-        out = model(torch.tensor(cur_audio).float(), None)
-    music_logits = out["clipwise_output"][:, MUSIC_INDEX]
+    
     results = []
-    for idx, logit in enumerate(music_logits):
-        results.append({
-            "onset": idx * PANN_CLIP_DURATION_SEC,
-            "offset": (idx + 1) * PANN_CLIP_DURATION_SEC,
-            "music_logit": float(logit)
-        })
+    for cur_converted_audio in convert_audio(wav=torch.from_numpy(cur_audio), original_rate=input_sr, target_rate=sample_rate, max_batch_size=max_batch_size):
+        # model inference
+        print(cur_converted_audio.shape)
+        with torch.no_grad():
+            cur_converted_audio = torch.tensor(cur_converted_audio, dtype=torch.float32, device=device)
+            out = model(cur_converted_audio, None)
+        music_logits = out["clipwise_output"][:, MUSIC_INDEX]
+        
+        found_music = False
+        for idx, logit in enumerate(music_logits):
+            results.append({
+                "onset": idx * PANN_CLIP_DURATION_SEC,
+                "offset": (idx + 1) * PANN_CLIP_DURATION_SEC,
+                "music_logit": float(logit)
+            })
+            if logit > MUSIC_LOGIT_THRESHOLD:
+                found_music = True
+                # not break here, to collect all the results we got so far
+        if found_music:
+            print(f"Music detected in {audio_path}")
+            break
     results_path = os.path.splitext(os.path.basename(audio_path))[0] + ".json"
     with open(os.path.join(output_dir, results_path), "w") as f:
         json.dump(results, f)

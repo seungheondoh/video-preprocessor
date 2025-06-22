@@ -1,7 +1,6 @@
 import yt_dlp
 from yt_dlp.utils import download_range_func
 import os
-import sys
 import json
 import shutil
 import subprocess
@@ -10,7 +9,10 @@ import random
 import argparse
 import pandas as pd
 from tqdm import tqdm
-from multiprocessing import Pool, Value, Lock, Manager
+from pathlib import Path
+import torch
+from torch.multiprocessing import set_start_method
+from multiprocessing import Pool, Lock, Manager, current_process
 
 import boto3
 
@@ -24,6 +26,22 @@ manager = Manager()
 cookie_lock = Lock()
 cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt')]
 available_cookie_indices = manager.list(list(range(len(cookie_file_names))))
+
+MAX_PROCS_PER_GPU = 2
+NUM_GPUS = torch.cuda.device_count()
+MAX_GPU_PROCS = NUM_GPUS * MAX_PROCS_PER_GPU
+process_base_num = 0 # TODO(minhee): This is a temporary solution. Instead of this support using semaphore.
+def get_assigned_device():
+    if not torch.cuda.is_available():
+        return 'cpu'
+
+    proc_id = int(current_process()._identity[0]) if current_process()._identity else 0
+
+    if proc_id - process_base_num < MAX_GPU_PROCS:
+        assigned_gpu = proc_id % NUM_GPUS
+        return f'cuda:{assigned_gpu}'
+    else:
+        return 'cpu'
 
 def extract_audio(mp4_path, mp3_path):
     cmd = [
@@ -96,9 +114,13 @@ class Crawler:
 
     def download_clip(self, args):
         video_id, clip_id, start_sec, end_sec = args
+        
+        clip_dir = self.get_file_path(clip_id)['clip_dir']
+        mp4_path = self.get_file_path(clip_id)['mp4_path']
+        mp3_path = self.get_file_path(clip_id)['mp3_path']
+        json_path = self.get_file_path(clip_id)['json_path']
 
-        clip_dir, mp4_path, mp3_path, json_path = self.get_file_path(clip_id)
-        shutil.rmtree(clip_dir, ignore_errors=True)
+        # shutil.rmtree(clip_dir, ignore_errors=True) # TODO(minhee): Unhide this later???
         os.makedirs(clip_dir, exist_ok=True)
 
         # file path used after download with yt-dlp
@@ -115,7 +137,7 @@ class Crawler:
             'outtmpl': mp4_template,
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
             'merge_output_format': 'mp4',
-            # 'writeinfojson': True, # TODO(minhee): Unhide this later
+            'writeinfojson': True,
             'force_keyframes_at_cuts': True,
             'postprocessors': [],
         }
@@ -142,14 +164,18 @@ class Crawler:
 
         return True
 
-    def s3_upload(self, video_info):
+    def s3_upload(self, video_info, s3_prefix, exclude_exts = []):
         if not isinstance(video_info, tuple):
             clip_id = video_info
         else:
             _, clip_id, _, _ = video_info
-        clip_dir, _, _, _ = self.get_file_path(clip_id)
-        if upload_clip_folder(clip_id):
-            shutil.rmtree(clip_dir)
+        clip_dir = self.get_file_path(clip_id)['clip_dir']
+        if upload_clip_folder(clip_id, s3_prefix, exclude_exts): # upload succeeded
+            # shutil.rmtree(clip_dir) # TODO(minhee): Unhide this later, and remove the following lines
+            mp3_path = self.get_file_path(clip_id)['mp3_path'].replace('_audio.mp3', '.mp3') # TODO(minhee): REMOVE THIS LATER
+            if os.path.exists(mp3_path):
+                # Remove mp3 file after upload
+                os.remove(mp3_path)
             log_result(clip_id, COMPLETED_LOG)
             print(f"업로드 성공: {clip_id}")
             return True
@@ -157,17 +183,20 @@ class Crawler:
             print(f"❌ S3 업로드 실패: {clip_id}")
             return False
 
-    def get_file_path(self, clip_id):
-        clip_dir = os.path.join(DOWNLOAD_DIR, clip_id)
-        mp4_path = os.path.join(clip_dir, f"{clip_id}_video.mp4")
-        mp3_path = os.path.join(clip_dir, f"{clip_id}_audio.mp3")
-        json_path = os.path.join(clip_dir, f"{clip_id}_metadata.json")
-        return clip_dir, mp4_path, mp3_path, json_path
-
+    @staticmethod
+    def get_file_path(clip_id):
+        file_path_dict = {
+            "clip_dir": os.path.join(DOWNLOAD_DIR, clip_id),
+            "mp4_path": os.path.join(DOWNLOAD_DIR, clip_id, f"{clip_id}_video.mp4"),
+            "mp3_path": os.path.join(DOWNLOAD_DIR, clip_id, f"{clip_id}_audio.mp3"),
+            "json_path": os.path.join(DOWNLOAD_DIR, clip_id, f"{clip_id}_metadata.json"),
+            "music_on_off_info_json_path": os.path.join(DOWNLOAD_DIR, clip_id, f"{clip_id}_clip_info.json"),
+            "panns_inference_json_path": os.path.join(DOWNLOAD_DIR, clip_id, f"{clip_id}.json"),
+        }
+        return file_path_dict
+    
     def process(self, video_info):
-        if self.download_clip(video_info):
-            return self.s3_upload(video_info)
-        return False
+        raise NotImplementedError("process() must be implemented by subclasses")
 
     def run(self):
         print(f"🔍 처리할 clip_id 수: {len(self.data)}")
@@ -175,9 +204,6 @@ class Crawler:
             with tqdm(total=len(self.data), desc="crawl_and_upload.py") as pbar:
                 for _ in pool.imap_unordered(self.process, self.data):
                     pbar.update(1)
-
-    def process(self, video_info):
-        raise NotImplementedError("process() must be implemented by subclasses")
 
 class MMTrailerCrawler(Crawler):
     def __init__(self, dataset_path):
@@ -201,7 +227,7 @@ class MMTrailerCrawler(Crawler):
         
     def process(self, video_info):
         if self.download_clip(video_info):
-            return self.s3_upload(video_info)
+            return self.s3_upload(video_info, S3_PREFIX)
         return False
     
 class YTCralwer(Crawler):
@@ -210,49 +236,55 @@ class YTCralwer(Crawler):
         self.clip_info_list = []
         self.do_download_audio = kwargs.get('do_download_audio', False)
         self.do_detect_music = kwargs.get('do_detect_music', False)
-        self.do_download_video = kwargs.get('do_download_video', False)
+        self.do_download_clip = kwargs.get('do_download_clip', False)
         self.do_upload_s3 = kwargs.get('do_upload_s3', False)
+        self.do_generate_clip_info_json = kwargs.get('do_generate_clip_info_json', False)
+        self.pann_max_batch_size = kwargs.get('pann_max_batch_size', None)
+        self.upload_exclude_ext = kwargs.get('upload_exclude_ext', [])
+        if self.do_generate_clip_info_json:
+            self.generate_clip_info_json()
         super().__init__(dataset_path=dataset_path)
     
     def _init_data(self, dataset_path):
-        df = pd.read_csv(dataset_path)
         # TODO(minhee): Find a good way to handle this, rather than dividing into cases like this.
         if self.do_download_audio:
+            df = pd.read_csv(dataset_path)
             failed = load_ids(FAILED_LOG)
             completed = load_ids(COMPLETED_LOG)
             video_ids = list(set(df['video_id'].tolist()) - set(failed) - set(completed))
+            self.data = [(video_id, video_id) for video_id in video_ids]
         elif self.do_detect_music:
-            video_ids = os.listdir(DOWNLOAD_DIR)
+            existing_ids = os.listdir(DOWNLOAD_DIR)
             video_ids = [
-                vid for vid in video_ids
-                if not os.path.exists(os.path.join(DOWNLOAD_DIR, vid, f"{vid}_clip_info.json"))
+                vid for vid in existing_ids
+                if not os.path.exists(self.get_file_path(vid)['music_on_off_info_json_path'])
             ]
-        elif self.do_download_video:
-            pass # TODO(minhee): Check this
-            # Filter out already processed video_ids
-            if os.path.exists(self.clip_info_json_path):
-                with open(self.clip_info_json_path, 'r') as f:
-                    self.clip_info_list = json.load(f)
-            existing_video_ids = set(item['video_id'] for item in self.clip_info_list) if self.clip_info_list else set()
-            video_ids = list(set(df['video_id'].tolist()) - existing_video_ids)
-        
-        self.data = [(vid, vid, None, None) for vid in video_ids]
-        
-    def get_file_path(self, clip_id):
-        if self.do_download_audio or self.do_detect_music:
-            clip_dir = os.path.join(DOWNLOAD_DIR, clip_id)
-            mp4_path = None
-            for ext in ['mp3', 'webm', 'm4a', 'wav']:
-                mp3_path = os.path.join(clip_dir, f"{clip_id}.{ext}")
-                if os.path.exists(mp3_path):
-                    break
-            json_path = os.path.join(clip_dir, f"{clip_id}.info.json")
-            return clip_dir, mp4_path, mp3_path, json_path
-        else:
-            return super().get_file_path(clip_id)
+            self.data = [(video_id, video_id, None, None) for video_id in video_ids]
+        elif self.do_download_clip:
+            clips_ids_already_uploaded = list_s3_clip_ids_that_have_specific_file_type(
+                s3_bucket=S3_BUCKET,
+                s3_prefix=S3_PREFIX_CLIP,
+                s3_client=s3,
+                file_ext='.mp4'
+            )
+            
+            with open(self.clip_info_json_path, 'r') as f:
+                self.clip_info_list = json.load(f)
+                
+            self.data = []
+            for item in self.clip_info_list:
+                video_id = item['video_id']
+                clip_id = item['clip_id']
+                start_sec, end_sec = item['clip_start_end_sec']
+                if clip_id not in clips_ids_already_uploaded:
+                    self.data.append((video_id, clip_id, start_sec, end_sec))
+        elif self.do_upload_s3:
+            # TODO(minhee): Fill this in later.
+            pass
         
     def download_audio_only(self, video_id):
-        output_dir, _, mp3_path, _ = self.get_file_path(video_id)
+        output_dir = self.get_file_path(video_id)['clip_dir']
+        mp3_path = self.get_file_path(video_id)['mp3_path']
             
         if os.path.exists(mp3_path):
             return True
@@ -268,50 +300,39 @@ class YTCralwer(Crawler):
             'preferredcodec': 'mp3', # Download in mp3
             'preferredquality': '192',
             }],
-            # 'writeinfojson': True,
         }
         return self._ytlp_download(ydl_opts, video_id)
     
-    def download_clips_per_video(self, video_id):
-        video_dir, _, mp3_path, _ = self.get_file_path(video_id)
-        # TODO(minhee): Find a way to handle file dir, and avoid hard coding
-        clip_onset_offset_path = os.path.join(video_dir, os.path.splitext(os.path.basename(mp3_path))[0] + "_clip_info.json")
+    def generate_clip_info_json(self):
+        # music onset and offset info json path
+        filename_suffix = self.get_file_path("")['music_on_off_info_json_path'].split('/')[-1]
+        json_info_dir = Path("music_on_off_info_json_dir")
+        download_clip_from_s3("", json_info_dir, S3_BUCKET, S3_PREFIX, s3, specific_ext=filename_suffix)
         
-        with open(clip_onset_offset_path) as f:
-            music_onset_offset = json.load(f)
-        
-        for idx, (clip_start, clip_end) in enumerate(music_onset_offset):
-            new_clip_id = f"{video_id}_{idx:07d}"
-            args = (video_id, new_clip_id, clip_start, clip_end)
-            
-            # Download clipped video, and extract audio
-            success = self.download_clip(args)
-            if not success:
-                return False
-
-            # Upload to S3
-            self.s3_upload(new_clip_id)
-            
-            # Update new dataset list
-            dict_item = {
-                "video_id": video_id,
-                "clip_id": new_clip_id,
-                "clip_start_end_sec": (clip_start, clip_end),
-            }
-            self.clip_info_list.append(dict_item)
-        
-            # Save new dataset JSON
-            with open(self.clip_info_json_path, 'w') as f:
-                json.dump(self.clip_info_list, f, indent=4)
-            
-        # TODO(minhee): Cleaning up like this is dangerous, so I'll hide it for now
-        # # Cleanup original download
-        # shutil.rmtree(video_dir)
-        
+        for json_file in tqdm(list(json_info_dir.glob(f"*{filename_suffix}"))):
+            with open(json_file, 'r') as f:
+                music_onset_offset = json.load(f)
+                video_id = json_file.stem.split('_')[0]  # Extract video_id from filename
+                for idx, (clip_start, clip_end) in enumerate(music_onset_offset):
+                    new_clip_id = f"{video_id}_{idx:07d}"
+                    args = (video_id, new_clip_id, clip_start, clip_end)
+                    
+                    # Update new dataset list
+                    dict_item = {
+                        "video_id": video_id,
+                        "clip_id": new_clip_id,
+                        "clip_start_end_sec": (clip_start, clip_end),
+                    }
+                    self.clip_info_list.append(dict_item)
+                
+        # Save new dataset JSON
+        with open(self.clip_info_json_path, 'w') as f:
+            json.dump(self.clip_info_list, f, indent=4)
         
     def process(self, video_info):
-        video_id, _, _, _ = video_info
-        video_dir, _, mp3_path, _ = self.get_file_path(video_id)
+        video_id, clip_id, _, _ = video_info
+        clip_dir = self.get_file_path(clip_id)['clip_dir']
+        mp3_path = self.get_file_path(clip_id)['mp3_path']
         
         # TODO(minhee): Code is too dirty fix this.
         if self.do_download_audio:
@@ -319,51 +340,67 @@ class YTCralwer(Crawler):
             success = self.download_audio_only(video_id)
             if not success:
                 return False
-            success = self.s3_upload(video_info)
-            if not success:
-                return False
         if self.do_detect_music:
             # Get clips' onset, offset (this includes PANN inference)
-            success = get_clip_start_and_end(mp3_path, video_dir)
+            success = get_clip_start_and_end(mp3_path, clip_dir, max_batch_size=self.pann_max_batch_size, device=get_assigned_device())
             if not success:
                 return False
         # Download clip video, and extract audio
-        if self.do_download_video:
-            success = self.download_clips_per_video(video_id)
+        if self.do_download_clip:
+            success = self.download_clip(video_info)
             if not success:
                 return False
         if self.do_upload_s3:
-            success = self.s3_upload(video_info)
+            if self.do_download_clip:
+                s3_prefix = S3_PREFIX_CLIP
+            else:
+                s3_prefix = S3_PREFIX
+            success = self.s3_upload(video_info, s3_prefix=s3_prefix, exclude_exts=self.upload_exclude_ext)
             if not success:
                 return False
         return True
     
 if __name__ == '__main__':
-    # print('sleep for about an hour...')
-    # time.sleep(5000)
+    # Add this before running multiprocessing
+    try:
+        set_start_method('spawn')  # Needed for CUDA with multiprocessing
+    except RuntimeError:
+        pass
+
     parser = argparse.ArgumentParser(description="YouTube Crawler")
     parser.add_argument('--crawler', type=str, choices=['mmtrailer', 'yt'])
     # TODO(minhee): This is only used for args.crawler=='yt' case. Clean these up.
     parser.add_argument('--do_download_audio', action='store_true')
     parser.add_argument('--do_detect_music', action='store_true')
-    parser.add_argument('--do_download_video', action='store_true')
+    parser.add_argument('--do_download_clip', action='store_true')
     parser.add_argument('--do_upload_s3', action='store_true')
+    parser.add_argument('--do_generate_clip_info_json', action='store_true')
+    parser.add_argument('--pann_max_batch_size', type=int)
     parser.add_argument('--n_workers', type=int)
+    parser.add_argument('--upload_exclude_ext', type=list)
     args = parser.parse_args()
 
-    if args.n_workers is not None:
-        NUM_WORKERS = args.n_workers
-    if args.crawler == 'mmtrailer':
-        crawler = MMTrailerCrawler(JSON_PATH)
-    elif args.crawler == 'yt':
-        kwargs = {
-            'do_download_audio': args.do_download_audio,
-            'do_detect_music': args.do_detect_music,
-            'do_download_video': args.do_download_video,
-            'do_upload_s3': args.do_upload_s3
-        }
-        crawler = YTCralwer(VIDEO_CSV_PATH, **kwargs)
-    else:
-        raise ValueError("Invalid crawler type. Choose 'mmtrailer' or 'yt'.")
+    while True:
+        if args.n_workers is not None:
+            NUM_WORKERS = args.n_workers
+        if args.crawler == 'mmtrailer':
+            crawler = MMTrailerCrawler(JSON_PATH)
+        elif args.crawler == 'yt':
+            kwargs = {
+                'do_download_audio': args.do_download_audio,
+                'do_detect_music': args.do_detect_music,
+                'do_download_clip': args.do_download_clip,
+                'do_upload_s3': args.do_upload_s3,
+                'do_generate_clip_info_json': args.do_generate_clip_info_json,
+                'pann_max_batch_size': args.pann_max_batch_size,
+                'upload_exclude_ext': args.upload_exclude_ext if args.upload_exclude_ext else [],
+            }
+            crawler = YTCralwer(VIDEO_CSV_PATH, **kwargs)
+        else:
+            raise ValueError("Invalid crawler type. Choose 'mmtrailer' or 'yt'.")
 
-    crawler.run()
+        if len(crawler.data) == 0:
+            break
+        crawler.run()
+        
+        process_base_num += NUM_WORKERS # TODO(minhee): This is a temporary solution. Instead of this support using semaphore.

@@ -5,7 +5,8 @@ import numpy as np
 from vp.annotation.music_detection import extract_pann_logits
 from vp.configs.constants import *
 
-def get_clip_start_and_end(mp3_path, output_dir):
+def get_clip_start_and_end(mp3_path, output_dir, max_batch_size=None, device='cuda'):
+    mp3_path = mp3_path.replace('_audio.mp3', '.mp3') # TODO(minhee): REMOVE THIS LATER
     if not os.path.exists(mp3_path):
         print(f'mp3_path {mp3_path} does not exist.')
         return
@@ -22,17 +23,31 @@ def get_clip_start_and_end(mp3_path, output_dir):
         try:
             extract_pann_logits(audio_path=mp3_path,
                                 output_dir=output_dir,
-                                ckpt_dir=CKPT_DIR
+                                ckpt_dir=CKPT_DIR,
+                                max_batch_size=max_batch_size,
+                                device=device,
             )
         except Exception as e:
             print(f"Error during PANN inference: {e}")
             return
     
-    with open(logit_path) as f:
-        logits = json.load(f)
+    if not os.path.exists(logit_path):
+        print(f"Logit file {logit_path} does not exist after PANN inference.")
+        return
+    
+    try:
+        with open(logit_path) as f:
+            logits = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON from {logit_path}: {e}")
+        return
 
     # Convert logits to binary
-    binary = [logit["music_logit"] > MUSIC_LOGIT_THRESHOLD for logit in logits]
+    try:
+        binary = [logit["music_logit"] > MUSIC_LOGIT_THRESHOLD for logit in logits]
+    except TypeError as e:
+        print(f"TypeError: {e} in {logit_path}")
+        return
 
     # Group clips based on binary sequence
     music_onset_offset_list = []
