@@ -5,9 +5,10 @@ import argparse
 import librosa
 import julius
 import numpy as np
+from pathlib import Path
 
 from vp.annotation.modules.panns import MUSIC_INDEX
-from vp.configs.constants import PANN_CLIP_DURATION_SEC, MUSIC_LOGIT_THRESHOLD
+from vp.configs.constants import PANN_CLIP_DURATION_SEC, MUSIC_LOGIT_THRESHOLD, get_file_path
 
 def convert_audio(wav, original_rate, target_rate, max_batch_size):
     if original_rate != target_rate:
@@ -55,8 +56,8 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
             )
             checkpoint = torch.load(model_path, map_location=device)
             model.load_state_dict(checkpoint['model'])
-            model.eval()
             model.to(device)
+            model.eval()
         extract_pann_logits._static_model = model
     else:
         model = extract_pann_logits._static_model
@@ -85,7 +86,10 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
         if found_music:
             print(f"Music detected in {audio_path}")
             break
-    results_path = os.path.splitext(os.path.basename(audio_path))[0] + ".json"
+        
+    video_id = os.path.splitext(os.path.basename(audio_path))[0]
+    results_path = Path(output_dir) / Path(get_file_path(video_id)['panns_inference_json_path'])
+    results_path.parent.mkdir(parents=True, exist_ok=True)
     with open(os.path.join(output_dir, results_path), "w") as f:
         json.dump(results, f)
 

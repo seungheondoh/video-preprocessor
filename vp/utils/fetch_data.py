@@ -40,25 +40,29 @@ def log_result(clip_id, logging_file_path, message=None):
     if message is not None:
         print(f"{clip_id} message: {message}")
 
-def s3_complete_clip_exists(clip_id, required_exts={".mp4", ".mp3", ".json"}):
+def s3_complete_clip_exists(clip_id, s3_bucket, s3_prefix, required_exts={".mp4", ".mp3", ".json"}):
     """
     S3에 clip_id 폴더가 존재하고, mp4, mp3, json 파일이 모두 있을 경우 True
     그렇지 않으면 False (즉, 덮어쓰기 대상)
+    
+    Also supports custom suffix (e.g. '_audio.mp3').
     """
-    prefix = f"{S3_PREFIX}/{clip_id}/"
+    prefix = f"{s3_prefix}/{clip_id}/"
 
     paginator = s3.get_paginator('list_objects_v2')
-    pages = paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix)
+    pages = paginator.paginate(Bucket=s3_bucket, Prefix=prefix)
 
-    existing_exts = set()
+    do_exist = {}
     for page in pages:
         for obj in page.get("Contents", []):
             key = obj["Key"]
             _, filename = key.rsplit("/", 1)
-            _, ext = os.path.splitext(filename)
-            existing_exts.add(ext.lower())
-
-    return required_exts.issubset(existing_exts)
+            for ext in required_exts:
+                if filename.endswith(ext):
+                    do_exist[ext] = True
+                    break
+    
+    return all(do_exist.get(ext, False) for ext in required_exts)
 
 # S3 저장소에 로컬에 저장된 파일을 업로드(내부 함수)
 def upload_to_s3(local_path, s3_key):
@@ -70,14 +74,14 @@ def upload_to_s3(local_path, s3_key):
         return False
 
 # S3 저장소에 로컬에 저장된 파일을 업로드
-def upload_clip_folder(clip_id, s3_prefix, exclude_exts):
+def upload_clip_folder(clip_id, s3_prefix, exclude_exts=None):
     local_dir = os.path.join(DOWNLOAD_DIR, clip_id)
     if not os.path.exists(local_dir):
         return False
 
-    # TODO(minhee): unhide this later
+    # TODO(minhee): unhide this later ???
     # # ✅ S3에 완전한 클립이 존재하면 스킵
-    # if s3_complete_clip_exists(clip_id):
+    # if s3_complete_clip_exists(clip_id, S3_BUCKET, s3_prefix):
     #     print(f"🚫 S3에 완전한 클립이 이미 존재함 → 스킵: {clip_id}")
     #     log_result(clip_id, COMPLETED_LOG)
     #     return True
@@ -85,10 +89,11 @@ def upload_clip_folder(clip_id, s3_prefix, exclude_exts):
     print(f"⏫ 업로드 시작: {clip_id}")
     success = True
     for fname in os.listdir(local_dir):
-        ext = os.path.splitext(fname)[1].lower()
-        if ext in exclude_exts:
-            print(f"🚫 제외된 확장자 파일 → 스킵: {fname}")
-            continue
+        do_upload = True
+        if exclude_exts is not None and any(fname.endswith(ext) for ext in exclude_exts):
+            do_upload = False
+        if not do_upload:
+            print(f"🚫 업로드 스킵: {fname}")
         local_path = os.path.join(local_dir, fname)
         s3_key = f"{s3_prefix}/{clip_id}/{fname}"
         if not upload_to_s3(local_path, s3_key):
@@ -203,6 +208,11 @@ def download_clip_from_s3(clip_id, local_clip_dir, s3_bucket, s3_prefix, s3_clie
                 # 로컬 폴더 없으면 생성
                 os.makedirs(Path(local_path).parent, exist_ok=True)
                 s3_client.download_file(s3_bucket, key, local_path)
+                # TODO(minhee): REMOVE THIS LATER
+                if local_path.endswith('.mp3') and not local_path.endswith('_audio.mp3'):
+                    new_name = local_path.replace('.mp3', '_audio.mp3')
+                    os.rename(local_path, new_name)
+                    local_path = new_name
                 print(f"✅ 다운로드 완료: {key} → {local_path}")
                 found_any = True
             except Exception as e:

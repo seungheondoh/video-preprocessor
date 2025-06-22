@@ -6,18 +6,19 @@ from vp.annotation.music_detection import extract_pann_logits
 from vp.configs.constants import *
 
 def get_clip_start_and_end(mp3_path, output_dir, max_batch_size=None, device='cuda'):
-    mp3_path = mp3_path.replace('_audio.mp3', '.mp3') # TODO(minhee): REMOVE THIS LATER
     if not os.path.exists(mp3_path):
-        print(f'mp3_path {mp3_path} does not exist.')
-        return
+        if not os.path.exists(mp3_path):
+            print(f'mp3_path {mp3_path} does not exist.')
+            return
     
     # TODO(minhee): Handle file path in noble way... And avoid hardcoding
-    clip_onset_offset_path = os.path.join(output_dir, os.path.splitext(os.path.basename(mp3_path))[0] + "_clip_info.json")
+    video_id = mp3_path.split('/')[-2]
+    clip_onset_offset_path = get_file_path(video_id)['music_on_off_info_json_path']
     if os.path.exists(clip_onset_offset_path):
         return
     
     # get music onset and offset using PANN
-    logit_path = os.path.join(output_dir, os.path.splitext(os.path.basename(mp3_path))[0] + ".json")
+    logit_path = get_file_path(video_id)['panns_inference_json_path']
     if not os.path.exists(logit_path):
         print(f"🔍 PANN 추론 시작: {mp3_path}")
         try:

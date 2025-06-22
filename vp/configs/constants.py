@@ -41,3 +41,24 @@ PANN_CLIP_DURATION_SEC = 20
 MUSIC_LOGIT_THRESHOLD = 0.7
 CLIP_PADDING_SEC = 5
 MAX_CLIP_SEC = 30
+
+@staticmethod
+def get_file_path(clip_id):
+    """ Set clip_id to empty string if you want to get suffixes only. """
+    suffix_dict = {
+        "clip_dir": "",
+        "mp4_path": "_video.mp4",
+        "mp3_path": "_audio.mp3",
+        "json_path": "_metadata.json",
+        "music_on_off_info_json_path": "_clip_info.json",
+        "panns_inference_json_path": "_panns_result.json",
+    }
+    
+    if len(clip_id) == 0:
+        return suffix_dict
+    
+    file_path_dict = {}
+    for key, suffix in suffix_dict.items():
+        file_path_dict[key] = os.path.join(DOWNLOAD_DIR, clip_id, f"{clip_id}{suffix}")
+    
+    return file_path_dict
