@@ -6,6 +6,7 @@ JSON_PATH = None
 S3_PREFIX = None
 NUM_WORKERS = None
 GPU_NUMBERS = None # e.g. "0,1,2,3,4,5,6"
+DATASET_TYPE = None # "korea", "global", or "all"
 
 try:
     from .user_config import *  # override private settings
@@ -21,9 +22,10 @@ LOG_DIR = f"{_PATH_TO_VP_CRAWLING}/logs"
 COOKIES_FILE_DIR = f"{_PATH_TO_VP_CRAWLING}/cookies"
 CKPT_DIR = f"{_PATH_TO_PROJECT_ROOT}/ckpt"
 DAFTPUNK_DIR = "/media/daftpunk4/home/seungheon/gaudio/data"
+DB_DIR = f"{DAFTPUNK_DIR}/db/{DATASET_TYPE}" if DATASET_TYPE != "all" else f"{DAFTPUNK_DIR}/db"
 
 # Video List
-VIDEO_CSV_PATH = f'{DAFTPUNK_DIR}/db/videos.csv'
+VIDEO_CSV_PATH = f'{DB_DIR}/videos.csv' if DATASET_TYPE != "all" else f'{DB_DIR}/videos_merged.csv'
 
 # Clip info
 YT_CLIP_INFO_JSON_PATH = f"{_PATH_TO_PROJECT_ROOT}/yt_dataset.json"
