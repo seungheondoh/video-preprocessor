@@ -245,7 +245,7 @@ class YTCralwer(Crawler):
     def init_data(self):
         self.data = None
         
-        df = pd.read_csv(self.dataset_path)
+        df = pd.read_csv(self.dataset_path, encoding='utf-8', engine='python')
         df = filter_dataframe(df)
         filtered_video_ids = set(df['video_id'].tolist())
         
