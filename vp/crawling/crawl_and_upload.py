@@ -18,6 +18,7 @@ import boto3
 
 from vp.utils.fetch_data import *
 from vp.configs.constants import *
+from vp.configs.filter_db import filter_dataframe
 from vp.crawling.get_music_onset_offset import get_clip_start_and_end
 
 s3 = boto3.client("s3")
@@ -97,7 +98,7 @@ class Crawler:
             clip_id = video_id
         
         # ✅ 랜덤한 시간 지연 추가
-        sleep_time = random.uniform(0.5, 1.0)
+        sleep_time = random.uniform(0.2, 0.3)
         print(f"[WAIT] {clip_id} 다운로드 전 대기 중... ({sleep_time:.2f}초)")
         time.sleep(sleep_time)
 
@@ -142,8 +143,9 @@ class Crawler:
             'force_keyframes_at_cuts': True,
             'postprocessors': [],
         }
-        if start_sec is not None and end_sec is not None:
-            ydl_opts['download_ranges'] = download_range_func(None, [(start_sec, end_sec)])
+        start_sec = float(start_sec) if start_sec is not None else None
+        end_sec = float(end_sec) if end_sec is not None else None
+        ydl_opts['download_ranges'] = download_range_func(None, [(start_sec, end_sec)])
 
         success = self._ytlp_download(ydl_opts, video_id, clip_id)
         if not success:
@@ -194,9 +196,13 @@ class Crawler:
                 if self.data is None or len(self.data) == 0:
                     return
                 print(f"🔍 처리할 clip_id 수: {len(self.data)}")
-                with tqdm(total=len(self.data), desc="crawl_and_upload.py") as pbar:
+                with tqdm(total=len(self.data), desc="crawl_and_upload.py", smoothing=0.1) as pbar:
                     for _ in pool.imap_unordered(self.process, self.data):
                         pbar.update(1)
+                
+                sleep_sec = 10.0
+                print(f"Sleeping for {sleep_sec} seconds before reinitializing data...")
+                time.sleep(sleep_sec)
 
 class MMTrailerCrawler(Crawler):
     def __init__(self, dataset_path):
@@ -234,30 +240,25 @@ class YTCralwer(Crawler):
         self.do_generate_clip_info_json = kwargs.get('do_generate_clip_info_json', False)
         self.pann_max_batch_size = kwargs.get('pann_max_batch_size', None)
         self.upload_exclude_exts = kwargs.get('upload_exclude_exts', None)
-        if self.do_generate_clip_info_json:
-            self.generate_clip_info_json()
         super().__init__(dataset_path=dataset_path)
     
     def init_data(self):
         self.data = None
         
+        df = pd.read_csv(self.dataset_path)
+        df = filter_dataframe(df)
+        filtered_video_ids = set(df['video_id'].tolist())
+        
         # TODO(minhee): Find a good way to handle this, rather than dividing into cases like this.
         if self.do_download_audio:
-            df = pd.read_csv(self.dataset_path)
-            video_ids = set([vid for vid in df['video_id'].tolist() if not os.path.exists(get_file_path(vid)['music_on_off_info_json_path'])])
-            
-            # TODO(minhee): Remove this later
-            with open('mp3_clip_ids_without_json.txt', 'r') as f:
-                mp3_clip_ids_without_json = set([line.strip() for line in f if line.strip()])
-            video_ids = video_ids - mp3_clip_ids_without_json
-            # TODO(minhee): Remove this later
-            
+            video_ids = set([vid for vid in filtered_video_ids if not os.path.exists(get_file_path(vid)['music_on_off_info_json_path'])])
+            video_ids = video_ids - set(load_ids(FAILED_LOG))
             self.data = [(video_id, video_id, None, None) for video_id in video_ids]
         elif self.do_detect_music:
             existing_ids = os.listdir(DOWNLOAD_DIR)
             video_ids = []
             for vid in existing_ids:
-                if os.path.exists(get_file_path(vid)['mp3_path']) and not os.path.exists(get_file_path(vid)['music_on_off_info_json_path']):
+                if os.path.exists(get_file_path(vid)['mp3_path']) and not os.path.exists(get_file_path(vid)['panns_inference_json_path']):
                     video_ids.append(vid)
             self.data = [(video_id, video_id, None, None) for video_id in video_ids]
         elif self.do_download_clip:
@@ -286,6 +287,8 @@ class YTCralwer(Crawler):
             # TODO(minhee): Refine this to get already uploaded clip ids and remove them from the list.
             video_ids = os.listdir(DOWNLOAD_DIR)
             self.data = [(video_id, video_id, None, None) for video_id in video_ids]
+        elif self.do_generate_clip_info_json:
+            self.generate_clip_info_json(filtered_video_ids)
         
     def download_audio_only(self, video_id):
         output_dir = get_file_path(video_id)['clip_dir']
@@ -312,7 +315,7 @@ class YTCralwer(Crawler):
         os.rename(yt_mp3_path, mp3_path)
         return True
     
-    def generate_clip_info_json(self):
+    def generate_clip_info_json(self, video_ids):
         # music onset and offset info json path
         music_on_off_info_json_suffix = get_file_path("")['music_on_off_info_json_path']
         json_info_dir = Path(DOWNLOAD_DIR)
@@ -320,6 +323,8 @@ class YTCralwer(Crawler):
         
         for json_file in tqdm(list(json_info_dir.rglob(f"*{music_on_off_info_json_suffix}"))):
             video_id = json_file.relative_to(json_info_dir).parts[0]
+            if video_id not in video_ids:
+                continue
             with open(json_file, 'r') as f:
                 music_onset_offset = json.load(f)
                 for idx, (clip_start, clip_end) in enumerate(music_onset_offset):
@@ -354,6 +359,13 @@ class YTCralwer(Crawler):
             success = get_clip_start_and_end(mp3_path, clip_dir, max_batch_size=self.pann_max_batch_size, device=get_assigned_device())
             if not success:
                 return False
+            # TODO(minhee): Remove this later
+            mp3_path = get_file_path(clip_id)['mp3_path']
+            if os.path.exists(mp3_path):
+                # Remove mp3 file after upload
+                print(f"Removing mp3 file: {mp3_path}")
+                os.remove(mp3_path)
+            # TODO(minhee): Remove up to here
         # Download clip video, and extract audio
         if self.do_download_clip:
             success = self.download_clip(video_info)
