@@ -13,8 +13,8 @@ ckpt/
 # Ignore logs
 logs/
 
-# Ignore local video files
-video_crawling_result/
+# Ignore local directories
+music_on_off_info_json_dir/
 
 *__pycache__
 video_preprocessor.egg-info/
