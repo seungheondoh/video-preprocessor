@@ -327,17 +327,14 @@ class YTCralwer(Crawler):
                 continue
             with open(json_file, 'r') as f:
                 music_onset_offset = json.load(f)
-                for idx, (clip_start, clip_end) in enumerate(music_onset_offset):
-                    new_clip_id = f"{video_id}_{idx:07d}"
-                    
-                    # Update new dataset list
-                    dict_item = {
-                        "video_id": video_id,
-                        "clip_id": new_clip_id,
-                        "clip_start_end_sec": [clip_start, clip_end],
-                    }
-                    self.clip_info_list.append(dict_item)
-                    break # Since we only use the first clip onset and offset info for each video_id
+                
+                # Update new dataset list
+                dict_item = {
+                    "video_id": video_id,
+                    "clip_id": f"{video_id}_{0:07d}",
+                    "clip_start_end_sec": music_onset_offset['selected_clip'],
+                }
+                self.clip_info_list.append(dict_item)
                 
         # Save new dataset JSON
         with open(self.clip_info_json_path, 'w') as f:
