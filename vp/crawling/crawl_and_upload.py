@@ -356,7 +356,7 @@ class YTCralwer(Crawler):
                 return False
         if self.do_detect_music:
             # Get clips' onset, offset (this includes PANN inference)
-            success = get_clip_start_and_end(mp3_path, clip_dir, max_batch_size=self.pann_max_batch_size, device=get_assigned_device())
+            success = get_clip_start_and_end(video_id, clip_dir, max_batch_size=self.pann_max_batch_size, device=get_assigned_device())
             if not success:
                 return False
             # TODO(minhee): Remove this later

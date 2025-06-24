@@ -41,8 +41,8 @@ S3_BUCKET = "maclab-youtube-crawl"
 # Clipping after PANN inference
 PANN_CLIP_DURATION_SEC = 20
 MUSIC_LOGIT_THRESHOLD = 0.7
-CLIP_PADDING_SEC = 5
 MAX_CLIP_SEC = 30
+CLIP_PADDING_SEC = (MAX_CLIP_SEC - PANN_CLIP_DURATION_SEC) // 2  # Padding on each side of the clip
 
 @staticmethod
 def get_file_path(clip_id):
