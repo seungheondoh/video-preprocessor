@@ -65,7 +65,7 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
     cur_audio, input_sr = librosa.load(audio_path, mono=True, sr=None, res_type='kaiser_fast')
     
     results = []
-    for cur_converted_audio in convert_audio(wav=torch.from_numpy(cur_audio), original_rate=input_sr, target_rate=sample_rate, max_batch_size=max_batch_size):
+    for batch_idx, cur_converted_audio in enumerate(convert_audio(wav=torch.from_numpy(cur_audio), original_rate=input_sr, target_rate=sample_rate, max_batch_size=max_batch_size)):
         # model inference
         print(cur_converted_audio.shape)
         with torch.no_grad():
@@ -76,8 +76,8 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
         found_music = False
         for idx, logit in enumerate(music_logits):
             results.append({
-                "onset": idx * PANN_CLIP_DURATION_SEC,
-                "offset": (idx + 1) * PANN_CLIP_DURATION_SEC,
+                "onset": (batch_idx * max_batch_size + idx) * PANN_CLIP_DURATION_SEC,
+                "offset": (batch_idx * max_batch_size + idx + 1) * PANN_CLIP_DURATION_SEC,
                 "music_logit": float(logit)
             })
             if logit > MUSIC_LOGIT_THRESHOLD:

@@ -30,7 +30,7 @@ cookie_file_names = [f for f in os.listdir(COOKIES_FILE_DIR) if f.endswith('.txt
 available_cookie_indices = manager.list(list(range(len(cookie_file_names))))
 
 # Manage GPUs
-MAX_PROCS_PER_GPU = 2
+MAX_PROCS_PER_GPU = 4
 NUM_GPUS = torch.cuda.device_count()
 MAX_GPU_PROCS = NUM_GPUS * MAX_PROCS_PER_GPU
 def get_assigned_device():
@@ -346,7 +346,6 @@ class YTCralwer(Crawler):
     def process(self, video_info):
         video_id, clip_id, _, _ = video_info
         clip_dir = get_file_path(clip_id)['clip_dir']
-        mp3_path = get_file_path(clip_id)['mp3_path']
         
         # TODO(minhee): Code is too dirty fix this.
         if self.do_download_audio:

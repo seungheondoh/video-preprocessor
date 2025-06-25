@@ -10,14 +10,14 @@ from vp.configs.constants import *
 RANDOM_SEED = 42
 np.random.seed(RANDOM_SEED)
 
-def get_clip_start_and_end(video_id, output_dir, max_batch_size=None, device='cuda'):
+def get_clip_start_and_end(video_id, output_dir, max_batch_size=None, device='cuda') -> bool:
     # get music onset and offset using PANN
-    logit_path = get_file_path(video_id)['panns_inference_json_path']
-    if not os.path.exists(logit_path):
+    panns_result_path = get_file_path(video_id)['panns_inference_json_path']
+    if not os.path.exists(panns_result_path):
         mp3_path = get_file_path(video_id)['mp3_path']
         if not os.path.exists(mp3_path):
             print(f'mp3_path {mp3_path} does not exist.')
-            return
+            return False
         print(f"🔍 PANN 추론 시작: {mp3_path}")
         try:
             extract_pann_logits(audio_path=mp3_path,
@@ -28,25 +28,25 @@ def get_clip_start_and_end(video_id, output_dir, max_batch_size=None, device='cu
             )
         except Exception as e:
             print(f"Error during PANN inference: {e}")
-            return
+            return False
     
-    if not os.path.exists(logit_path):
-        print(f"Logit file {logit_path} does not exist after PANN inference.")
-        return
+    if not os.path.exists(panns_result_path):
+        print(f"Logit file {panns_result_path} does not exist after PANN inference.")
+        return False
     
     try:
-        with open(logit_path) as f:
+        with open(panns_result_path) as f:
             logits = json.load(f)
     except json.JSONDecodeError as e:
-        print(f"Error decoding JSON from {logit_path}: {e}")
-        return
+        print(f"Error decoding JSON from {panns_result_path}: {e}")
+        return False
 
     # Convert logits to binary
     try:
         binary = [logit["music_logit"] > MUSIC_LOGIT_THRESHOLD for logit in logits]
     except TypeError as e:
-        print(f"TypeError: {e} in {logit_path}")
-        return
+        print(f"TypeError: {e} in {panns_result_path}")
+        return False
 
     # Group clips based on binary sequence
     music_onset_offset_list = []
@@ -84,12 +84,14 @@ def get_clip_start_and_end(video_id, output_dir, max_batch_size=None, device='cu
     clip_onset_offset_path = get_file_path(video_id)['music_on_off_info_json_path']
     with open(clip_onset_offset_path, "w") as f:
         json.dump(result_dict, f)
+    
+    return True
 
 def main():
     output_dir = Path(DOWNLOAD_DIR)
-    vids = [str(vid.name) for vid in output_dir.iterdir()]
+    vids = [viddir.name for viddir in output_dir.iterdir()]
     for vid in tqdm(vids):
-        get_clip_start_and_end(vid, output_dir, max_batch_size=16, device='cuda')
+        get_clip_start_and_end(vid, output_dir, max_batch_size=4, device='cuda')
 
 if __name__ == "__main__":
     main()
