@@ -15,6 +15,7 @@ logs/
 
 # Ignore local directories
 music_on_off_info_json_dir/
+download_dir/
 
 *__pycache__
 video_preprocessor.egg-info/
