@@ -174,11 +174,11 @@ class Crawler:
             _, clip_id, _, _ = video_info
         clip_dir = get_file_path(clip_id)['clip_dir']
         if upload_clip_folder(clip_id, s3_prefix, exclude_exts=exclude_exts): # upload succeeded
-            # shutil.rmtree(clip_dir) # TODO(minhee): Unhide this later, and remove the following lines
-            mp3_path = get_file_path(clip_id)['mp3_path']
-            if os.path.exists(mp3_path):
-                # Remove mp3 file after upload
-                os.remove(mp3_path)
+            shutil.rmtree(clip_dir) # TODO(minhee): Unhide this later, and remove the following lines
+            # mp3_path = get_file_path(clip_id)['mp3_path']
+            # if os.path.exists(mp3_path):
+            #     # Remove mp3 file after upload
+            #     os.remove(mp3_path)
             log_result(clip_id, COMPLETED_LOG)
             print(f"업로드 성공: {clip_id}")
             return True
@@ -245,12 +245,12 @@ class YTCralwer(Crawler):
     def init_data(self):
         self.data = None
         
-        df = pd.read_csv(self.dataset_path, encoding='utf-8', engine='python')
-        df = filter_dataframe(df)
-        filtered_video_ids = set(df['video_id'].tolist())
-        
         # TODO(minhee): Find a good way to handle this, rather than dividing into cases like this.
         if self.do_download_audio:
+            df = pd.read_csv(self.dataset_path, encoding='utf-8', engine='python')
+            df = filter_dataframe(df)
+            filtered_video_ids = set(df['video_id'].tolist())
+            
             video_ids = set([vid for vid in filtered_video_ids if not os.path.exists(get_file_path(vid)['music_on_off_info_json_path'])])
             video_ids = video_ids - set(load_ids(FAILED_LOG))
             self.data = [(video_id, video_id, None, None) for video_id in video_ids]
@@ -269,25 +269,28 @@ class YTCralwer(Crawler):
                 file_ext='.mp4'
             )
             
-            if os.path.exists(self.dataset_path):
+            if os.path.exists(self.clip_info_json_path):
                 with open(self.clip_info_json_path, 'r') as f:
                     self.clip_info_list = json.load(f)
             else:
-                print(f"❌ {self.clip_info_json_path} 파일이 존재하지 않습니다. 클립 정보 JSON을 생성합니다.")
-                self.generate_clip_info_json()
+                print(f"❌ {self.clip_info_json_path} 파일이 존재하지 않습니다. --do_generate_clip_info_json 옵션으로 클립 정보 JSON을 생성하십시오.") # TODO(minhee): Refine the message
                 
             self.data = []
             for item in self.clip_info_list:
-                video_id = item['video_id']
-                clip_id = item['clip_id']
-                start_sec, end_sec = item['clip_start_end_sec']
-                if clip_id not in clips_ids_already_uploaded:
-                    self.data.append((video_id, clip_id, start_sec, end_sec))
+                if len(item['clip_start_end_sec']) == 2:
+                    video_id = item['video_id']
+                    clip_id = item['clip_id']
+                    start_sec, end_sec = item['clip_start_end_sec']
+                    if clip_id not in clips_ids_already_uploaded:
+                        self.data.append((video_id, clip_id, start_sec, end_sec))
         elif self.do_upload_s3:
             # TODO(minhee): Refine this to get already uploaded clip ids and remove them from the list.
             video_ids = os.listdir(DOWNLOAD_DIR)
             self.data = [(video_id, video_id, None, None) for video_id in video_ids]
         elif self.do_generate_clip_info_json:
+            df = pd.read_csv(self.dataset_path, encoding='utf-8', engine='python')
+            df = filter_dataframe(df)
+            filtered_video_ids = set(df['video_id'].tolist())
             self.generate_clip_info_json(filtered_video_ids)
         
     def download_audio_only(self, video_id):
