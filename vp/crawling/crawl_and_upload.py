@@ -153,7 +153,12 @@ class Crawler:
             return False
 
         if os.path.exists(ytdlp_mp4_path):
-            extract_audio(ytdlp_mp4_path, ytdlp_mp3_path)
+            try:
+                extract_audio(ytdlp_mp4_path, ytdlp_mp3_path)
+            except subprocess.CalledProcessError as e:
+                log_result(clip_id, FAILED_LOG, f"오디오 추출 실패: {str(e)}")
+                shutil.rmtree(clip_dir, ignore_errors=True)
+                return False
 
         if not (os.path.exists(ytdlp_mp4_path) and os.path.exists(ytdlp_mp3_path) and os.path.exists(ytdlp_json_path)):
             log_result(clip_id, FAILED_LOG, "다운로드된 파일 없음")
