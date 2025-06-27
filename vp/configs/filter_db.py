@@ -1,6 +1,8 @@
 import pandas as pd
 
 def filter_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    df = df[(df['view_count'] >= 100000) \
+    df = df[(df['view_count'] >= 50000) \
         & (df['duration'] <= 3600)] # TODO(minhee): Adjust filtering condition later
     return df
+
+# TODO(minhee): Filter by subscriber (100k), view count (50k)로 수정

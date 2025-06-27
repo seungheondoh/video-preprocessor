@@ -355,3 +355,29 @@ def crawl_s3_clips_from_file(clip_list_path, s3_bucket, s3_prefix, s3_client, lo
 
     print(f"✅ 다운로드 완료! (mode: {mode})")
     
+def get_last_modified_date(clip_id, s3_bucket, s3_prefix, s3_client):
+    """
+    S3에서 특정 clip_id의 마지막 수정 날짜를 가져오는 함수.
+
+    Parameters:
+    - clip_id (str): 조회할 클립 ID
+    - s3_bucket (str): S3 버킷 이름
+    - s3_prefix (str): S3 내 저장된 경로 prefix (ex: 'clips')
+    - s3_client (boto3.client): boto3의 S3 클라이언트 객체
+
+    Returns:
+    - last_modified (datetime): 마지막 수정 날짜
+    """
+    prefix = f"{s3_prefix}/{clip_id}/"
+    
+    paginator = s3_client.get_paginator('list_objects_v2')
+    pages = paginator.paginate(Bucket=s3_bucket, Prefix=prefix)
+
+    for page in pages:
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith('/'):
+                continue
+            return obj["LastModified"]
+    
+    return None

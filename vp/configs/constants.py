@@ -24,8 +24,9 @@ CKPT_DIR = f"{_PATH_TO_PROJECT_ROOT}/ckpt"
 DAFTPUNK_DIR = "/media/daftpunk4/home/seungheon/gaudio/data"
 DB_DIR = f"{DAFTPUNK_DIR}/db/{DATASET_TYPE}" if DATASET_TYPE != "all" else f"{DAFTPUNK_DIR}/db"
 
-# Video List
+# DB Data
 VIDEO_CSV_PATH = f'{DB_DIR}/videos.csv' if DATASET_TYPE != "all" else f'{DB_DIR}/videos_merged.csv'
+CHANNEL_CSV_PATH = f'{DB_DIR}/channels.csv' if DATASET_TYPE != "all" else None
 
 # Clip info
 YT_CLIP_INFO_JSON_PATH = f"{_PATH_TO_PROJECT_ROOT}/yt_dataset.json"
