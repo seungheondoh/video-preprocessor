@@ -75,7 +75,9 @@ class Crawler:
         cookie_error_keywords = ['not a bot',
                                  'rate-limited',
                                  'HTTP Error 403: Forbidden',
-                                 'does not look like a netscape format cookies file']
+                                 'does not look like a netscape format cookies file',
+                                 'this content'
+                                 ]
         if any(keyword.lower() in error_message.lower() for keyword in cookie_error_keywords):
             with cookie_lock:
                 try:
@@ -179,11 +181,12 @@ class Crawler:
             _, clip_id, _, _ = video_info
         clip_dir = get_file_path(clip_id)['clip_dir']
         if upload_clip_folder(clip_id, s3_prefix, exclude_exts=exclude_exts): # upload succeeded
-            shutil.rmtree(clip_dir) # TODO(minhee): Unhide this later, and remove the following lines
-            # mp3_path = get_file_path(clip_id)['mp3_path']
-            # if os.path.exists(mp3_path):
-            #     # Remove mp3 file after upload
-            #     os.remove(mp3_path)
+            mp3_path = get_file_path(clip_id)['mp3_path']
+            mp4_path = get_file_path(clip_id)['mp4_path']
+            for paths_to_remove in [mp3_path, mp4_path]:
+                if os.path.exists(paths_to_remove):
+                    print(f"Removing file: {paths_to_remove}")
+                    os.remove(paths_to_remove)
             log_result(clip_id, COMPLETED_LOG)
             print(f"업로드 성공: {clip_id}")
             return True
