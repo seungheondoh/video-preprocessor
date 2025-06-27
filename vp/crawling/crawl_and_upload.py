@@ -240,7 +240,6 @@ class MMTrailerCrawler(Crawler):
 class YTCralwer(Crawler):
     def __init__(self, dataset_path, **kwargs):
         self.clip_info_json_path = YT_CLIP_INFO_JSON_PATH
-        self.clip_info_list = []
         self.do_download_audio = kwargs.get('do_download_audio', False)
         self.do_detect_music = kwargs.get('do_detect_music', False)
         self.do_download_clip = kwargs.get('do_download_clip', False)
@@ -279,18 +278,26 @@ class YTCralwer(Crawler):
             
             if os.path.exists(self.clip_info_json_path):
                 with open(self.clip_info_json_path, 'r') as f:
-                    self.clip_info_list = json.load(f)
+                    clip_info_list = json.load(f)
             else:
                 print(f"❌ {self.clip_info_json_path} 파일이 존재하지 않습니다. --do_generate_clip_info_json 옵션으로 클립 정보 JSON을 생성하십시오.") # TODO(minhee): Refine the message
+            
+            # Remove already uploaded clip
+            clip_info_dict = {}
+            for element in clip_info_list:
+                clip_id = element['clip_id']
+                clip_info_dict[clip_id] = element
+            for clip_id in clips_ids_already_uploaded:
+                if clip_id in clip_info_dict:
+                    del clip_info_dict[clip_id]
                 
             self.data = []
-            for item in self.clip_info_list:
+            for item in clip_info_list.values():
                 if len(item['clip_start_end_sec']) == 2:
                     video_id = item['video_id']
                     clip_id = item['clip_id']
                     start_sec, end_sec = item['clip_start_end_sec']
-                    if clip_id not in clips_ids_already_uploaded:
-                        self.data.append((video_id, clip_id, start_sec, end_sec))
+                    self.data.append((video_id, clip_id, start_sec, end_sec))
         elif self.do_upload_s3:
             # TODO(minhee): Refine this to get already uploaded clip ids and remove them from the list.
             video_ids = os.listdir(DOWNLOAD_DIR)
@@ -332,6 +339,7 @@ class YTCralwer(Crawler):
         json_info_dir = Path(DOWNLOAD_DIR)
         # download_clip_from_s3("", json_info_dir, S3_BUCKET, S3_PREFIX, s3, specific_ext=music_on_off_info_json_suffix)
         
+        clip_info_list = []
         for json_file in tqdm(list(json_info_dir.rglob(f"*{music_on_off_info_json_suffix}"))):
             video_id = json_file.relative_to(json_info_dir).parts[0]
             if video_id not in video_ids:
@@ -345,11 +353,11 @@ class YTCralwer(Crawler):
                     "clip_id": f"{video_id}_{0:07d}",
                     "clip_start_end_sec": music_onset_offset['selected_clip'],
                 }
-                self.clip_info_list.append(dict_item)
+                clip_info_list.append(dict_item)
                 
         # Save new dataset JSON
         with open(self.clip_info_json_path, 'w') as f:
-            json.dump(self.clip_info_list, f, indent=4)
+            json.dump(clip_info_list, f, indent=4)
         
     def process(self, video_info):
         video_id, clip_id, _, _ = video_info
