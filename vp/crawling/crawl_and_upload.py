@@ -292,7 +292,7 @@ class YTCralwer(Crawler):
                     del clip_info_dict[clip_id]
                 
             self.data = []
-            for item in clip_info_list.values():
+            for item in clip_info_dict.values():
                 if len(item['clip_start_end_sec']) == 2:
                     video_id = item['video_id']
                     clip_id = item['clip_id']
