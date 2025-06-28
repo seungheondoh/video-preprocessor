@@ -65,8 +65,12 @@ class Crawler:
     def get_cookie_file_path(self):
         with cookie_lock:
             if not available_cookie_indices:
-                print("❌ 모든 쿠키가 사용 불가 상태입니다. 작업을 중단합니다.")
-                os._exit(1)
+                print("❌ 모든 쿠키가 사용 불가 상태입니다. 쿠키 인덱스를 재설정합니다.")
+                # Reinitialize available_cookie_indices
+                available_cookie_indices[:] = list(range(len(cookie_file_names)))
+                if not available_cookie_indices:
+                    print("❌ 쿠키 인덱스 재설정 실패. 작업을 중단합니다.")
+                    os._exit(1)
 
             index = random.choice(available_cookie_indices)
             return os.path.join(COOKIES_FILE_DIR, cookie_file_names[index])
