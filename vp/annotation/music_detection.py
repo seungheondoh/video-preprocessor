@@ -33,7 +33,7 @@ def convert_audio(wav, original_rate, target_rate, max_batch_size):
 def extract_bendit_logits():
     pass
 
-def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_rate=32000, model=None, max_batch_size=None):
+def extract_pann_logits(audio_path, ckpt_dir, device="cuda", sample_rate=32000, model=None, max_batch_size=None):
     from vp.annotation.modules.panns import Cnn14
 
     # Use a static variable to cache the loaded model
@@ -88,9 +88,9 @@ def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_
             break
         
     video_id = Path(audio_path).parent.name
-    results_path = Path(output_dir) / Path(get_file_path(video_id)['panns_inference_json_path'])
+    results_path = Path(get_file_path(video_id)['panns_inference_json_path'])
     results_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(os.path.join(output_dir, results_path), "w") as f:
+    with open(results_path, "w") as f:
         json.dump(results, f)
 
 
@@ -98,13 +98,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--audio_path", type=str, default="data/audio/18500.mp3")
     parser.add_argument("--audio_dir", type=str, default="data/audio")
-    parser.add_argument("--output_dir", type=str, default="data/annotation/music_detection")
     parser.add_argument("--ckpt_dir", type=str, default="ckpt")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--sample_rate", type=int, default=32000)
     args = parser.parse_args()
     os.makedirs(args.ckpt_dir, exist_ok=True)
-    extract_pann_logits(args.audio_path, args.output_dir, args.ckpt_dir, args.device, args.sample_rate)
+    extract_pann_logits(args.audio_path, args.ckpt_dir, args.device, args.sample_rate)
 
 
 if __name__ == "__main__":

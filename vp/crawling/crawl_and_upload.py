@@ -269,7 +269,7 @@ class YTCralwer(Crawler):
             existing_ids = os.listdir(DOWNLOAD_DIR)
             video_ids = []
             for vid in existing_ids:
-                if os.path.exists(get_file_path(vid)['mp3_path']) and not os.path.exists(get_file_path(vid)['panns_inference_json_path']):
+                if os.path.exists(get_file_path(vid)['mp3_path']) and not os.path.exists(get_file_path(vid)['music_on_off_info_json_path']):
                     video_ids.append(vid)
             self.data = [(video_id, video_id, None, None) for video_id in video_ids]
         elif self.do_download_clip:

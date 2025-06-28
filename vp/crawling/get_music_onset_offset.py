@@ -21,7 +21,6 @@ def get_clip_start_and_end(video_id, output_dir, max_batch_size=None, device='cu
         print(f"🔍 PANN 추론 시작: {mp3_path}")
         try:
             extract_pann_logits(audio_path=mp3_path,
-                                output_dir=output_dir,
                                 ckpt_dir=CKPT_DIR,
                                 max_batch_size=max_batch_size,
                                 device=device,
