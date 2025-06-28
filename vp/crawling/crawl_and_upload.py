@@ -80,7 +80,7 @@ class Crawler:
                                  'rate-limited',
                                  'HTTP Error 403: Forbidden',
                                  'does not look like a netscape format cookies file',
-                                 'this content'
+                                 'available'
                                  ]
         if any(keyword.lower() in error_message.lower() for keyword in cookie_error_keywords):
             with cookie_lock:
