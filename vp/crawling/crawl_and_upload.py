@@ -183,7 +183,6 @@ class Crawler:
             clip_id = video_info
         else:
             _, clip_id, _, _ = video_info
-        clip_dir = get_file_path(clip_id)['clip_dir']
         if upload_clip_folder(clip_id, s3_prefix, exclude_exts=exclude_exts): # upload succeeded
             mp3_path = get_file_path(clip_id)['mp3_path']
             mp4_path = get_file_path(clip_id)['mp4_path']
@@ -256,12 +255,12 @@ class YTCralwer(Crawler):
     def init_data(self):
         self.data = None
         
+        df = pd.read_csv(self.dataset_path, encoding='utf-8', engine='python')
+        df = filter_dataframe(df)
+        filtered_video_ids = set(df['video_id'].tolist())
+        
         # TODO(minhee): Find a good way to handle this, rather than dividing into cases like this.
         if self.do_download_audio:
-            df = pd.read_csv(self.dataset_path, encoding='utf-8', engine='python')
-            df = filter_dataframe(df)
-            filtered_video_ids = set(df['video_id'].tolist())
-            
             video_ids = set([vid for vid in filtered_video_ids if not os.path.exists(get_file_path(vid)['music_on_off_info_json_path'])])
             video_ids = video_ids - set(load_ids(FAILED_LOG))
             self.data = [(video_id, video_id, None, None) for video_id in video_ids]
@@ -307,9 +306,6 @@ class YTCralwer(Crawler):
             video_ids = os.listdir(DOWNLOAD_DIR)
             self.data = [(video_id, video_id, None, None) for video_id in video_ids]
         elif self.do_generate_clip_info_json:
-            df = pd.read_csv(self.dataset_path, encoding='utf-8', engine='python')
-            df = filter_dataframe(df)
-            filtered_video_ids = set(df['video_id'].tolist())
             self.generate_clip_info_json(filtered_video_ids)
         
     def download_audio_only(self, video_id):
@@ -339,19 +335,13 @@ class YTCralwer(Crawler):
     
     def generate_clip_info_json(self, video_ids):
         # music onset and offset info json path
-        music_on_off_info_json_suffix = get_file_path("")['music_on_off_info_json_path']
-        json_info_dir = Path(DOWNLOAD_DIR)
-        # download_clip_from_s3("", json_info_dir, S3_BUCKET, S3_PREFIX, s3, specific_ext=music_on_off_info_json_suffix)
         
         clip_info_list = []
-        for json_file in tqdm(list(json_info_dir.rglob(f"*{music_on_off_info_json_suffix}"))):
-            video_id = json_file.relative_to(json_info_dir).parts[0]
-            if video_id not in video_ids:
-                continue
-            with open(json_file, 'r') as f:
-                music_onset_offset = json.load(f)
-                
-                # Update new dataset list
+        for video_id in video_ids:
+            json_file_path = get_file_path(video_id)['music_on_off_info_json_path']
+            if os.path.exists(json_file_path):
+                with open(json_file_path, 'r') as f:
+                    music_onset_offset = json.load(f)
                 dict_item = {
                     "video_id": video_id,
                     "clip_id": f"{video_id}_{0:07d}",
