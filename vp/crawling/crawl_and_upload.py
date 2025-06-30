@@ -272,13 +272,20 @@ class YTCralwer(Crawler):
                     video_ids.append(vid)
             self.data = [(video_id, video_id, None, None) for video_id in video_ids]
         elif self.do_download_clip:
-            clips_ids_already_uploaded = list_s3_clip_ids_that_have_specific_file_type(
-                s3_bucket=S3_BUCKET,
-                s3_prefix=S3_PREFIX_CLIP,
-                s3_client=s3,
-                file_ext='.mp4'
-            )
+            # Get already uploaded clip ids
+            if not os.path.exists(COMPLETED_LOG):
+                clips_ids_already_uploaded = list_s3_clip_ids_that_have_specific_file_type(
+                    s3_bucket=S3_BUCKET,
+                    s3_prefix=S3_PREFIX_CLIP,
+                    s3_client=s3,
+                    file_ext='.mp4'
+                )
+                for clip_id in clips_ids_already_uploaded:
+                    log_result(clip_id, COMPLETED_LOG)
+            else:
+                clips_ids_already_uploaded = load_ids(COMPLETED_LOG)
             
+            # Load clip info JSON
             if os.path.exists(self.clip_info_json_path):
                 with open(self.clip_info_json_path, 'r') as f:
                     clip_info_list = json.load(f)
@@ -342,6 +349,8 @@ class YTCralwer(Crawler):
             if os.path.exists(json_file_path):
                 with open(json_file_path, 'r') as f:
                     music_onset_offset = json.load(f)
+                if len(music_onset_offset['selected_clip']) != 2:
+                    continue
                 dict_item = {
                     "video_id": video_id,
                     "clip_id": f"{video_id}_{0:07d}",
@@ -368,13 +377,11 @@ class YTCralwer(Crawler):
             success = get_clip_start_and_end(video_id, clip_dir, max_batch_size=self.pann_max_batch_size, device=get_assigned_device())
             if not success:
                 return False
-            # TODO(minhee): Remove this later
+            # Remove mp3 file after upload
             mp3_path = get_file_path(clip_id)['mp3_path']
             if os.path.exists(mp3_path):
-                # Remove mp3 file after upload
                 print(f"Removing mp3 file: {mp3_path}")
                 os.remove(mp3_path)
-            # TODO(minhee): Remove up to here
         # Download clip video, and extract audio
         if self.do_download_clip:
             success = self.download_clip(video_info)
@@ -391,12 +398,6 @@ class YTCralwer(Crawler):
         return True
     
 if __name__ == '__main__':
-    # Add this before running multiprocessing
-    try:
-        set_start_method('spawn')  # Needed for CUDA with multiprocessing
-    except RuntimeError:
-        pass
-
     parser = argparse.ArgumentParser(description="YouTube Crawler")
     parser.add_argument('--crawler', type=str, choices=['mmtrailer', 'yt'])
     # TODO(minhee): This is only used for args.crawler=='yt' case. Clean these up.
@@ -410,8 +411,6 @@ if __name__ == '__main__':
     parser.add_argument('--upload_exclude_exts', type=list)
     args = parser.parse_args()
 
-    if args.n_workers is not None:
-        NUM_WORKERS = args.n_workers
     if args.crawler == 'mmtrailer':
         crawler = MMTrailerCrawler(JSON_PATH)
     elif args.crawler == 'yt':
