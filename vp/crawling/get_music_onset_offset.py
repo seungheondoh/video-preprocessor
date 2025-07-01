@@ -1,8 +1,6 @@
 import os
 import json
 import numpy as np
-from pathlib import Path
-from tqdm import tqdm
 
 from vp.annotation.music_detection import extract_pann_logits
 from vp.configs.constants import *
@@ -21,10 +19,14 @@ def get_clip_start_and_end(video_id, output_dir, max_batch_size=None, device='cu
         print(f"🔍 PANN 추론 시작: {mp3_path}")
         try:
             extract_pann_logits(audio_path=mp3_path,
+                                output_dir=output_dir,
                                 ckpt_dir=CKPT_DIR,
                                 max_batch_size=max_batch_size,
                                 device=device,
             )
+            results_filename = os.path.splitext(os.path.basename(mp3_path))[0] + ".json"
+            results_path = os.path.join(output_dir, results_filename)
+            os.rename(results_path, panns_result_path)
         except Exception as e:
             print(f"Error during PANN inference: {e}")
             return False
@@ -87,10 +89,10 @@ def get_clip_start_and_end(video_id, output_dir, max_batch_size=None, device='cu
     return True
 
 def main():
-    output_dir = Path(DOWNLOAD_DIR)
-    vids = [viddir.name for viddir in output_dir.iterdir()]
-    for vid in tqdm(vids):
-        get_clip_start_and_end(vid, output_dir, max_batch_size=4, device='cuda')
+    video_id = '-uzbZiBwl6w'
+    output_dir = '.'
+    max_batch_size = 8
+    get_clip_start_and_end(video_id, output_dir, max_batch_size=max_batch_size, device='cuda')
 
 if __name__ == "__main__":
     main()

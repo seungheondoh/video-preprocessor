@@ -17,6 +17,7 @@ def convert_audio(wav, original_rate, target_rate, max_batch_size):
     chunk_size = int(PANN_CLIP_DURATION_SEC * target_rate)
     total_chunks = len(wav) // chunk_size
     if max_batch_size is None or max_batch_size <= 0:
+        # If max_batch_size is not set or invalid, use total_chunks
         max_batch_size = total_chunks if total_chunks > 0 else 1
 
     for batch_idx in range(0, total_chunks, max_batch_size):
@@ -33,7 +34,7 @@ def convert_audio(wav, original_rate, target_rate, max_batch_size):
 def extract_bendit_logits():
     pass
 
-def extract_pann_logits(audio_path, ckpt_dir, device="cuda", sample_rate=32000, model=None, max_batch_size=None):
+def extract_pann_logits(audio_path, output_dir, ckpt_dir, device="cuda", sample_rate=32000, model=None, max_batch_size=None):
     from vp.annotation.modules.panns import Cnn14
 
     # Use a static variable to cache the loaded model
@@ -75,9 +76,10 @@ def extract_pann_logits(audio_path, ckpt_dir, device="cuda", sample_rate=32000, 
         
         found_music = False
         for idx, logit in enumerate(music_logits):
+            start_idx = batch_idx * max_batch_size + idx if max_batch_size is not None else idx
             results.append({
-                "onset": (batch_idx * max_batch_size + idx) * PANN_CLIP_DURATION_SEC,
-                "offset": (batch_idx * max_batch_size + idx + 1) * PANN_CLIP_DURATION_SEC,
+                "onset": start_idx * PANN_CLIP_DURATION_SEC,
+                "offset": (start_idx + 1) * PANN_CLIP_DURATION_SEC,
                 "music_logit": float(logit)
             })
             if logit > MUSIC_LOGIT_THRESHOLD:
@@ -86,10 +88,9 @@ def extract_pann_logits(audio_path, ckpt_dir, device="cuda", sample_rate=32000, 
         if found_music:
             print(f"Music detected in {audio_path}")
             break
-        
-    video_id = Path(audio_path).parent.name
-    results_path = Path(get_file_path(video_id)['panns_inference_json_path'])
-    results_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    results_filename = os.path.splitext(os.path.basename(audio_path))[0] + ".json"
+    results_path = os.path.join(output_dir, results_filename)
     with open(results_path, "w") as f:
         json.dump(results, f)
 
@@ -98,12 +99,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--audio_path", type=str, default="data/audio/18500.mp3")
     parser.add_argument("--audio_dir", type=str, default="data/audio")
+    parser.add_argument("--output_dir", type=str, default="data/annotation/music_detection")
     parser.add_argument("--ckpt_dir", type=str, default="ckpt")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--sample_rate", type=int, default=32000)
     args = parser.parse_args()
     os.makedirs(args.ckpt_dir, exist_ok=True)
-    extract_pann_logits(args.audio_path, args.ckpt_dir, args.device, args.sample_rate)
+    extract_pann_logits(args.audio_path, args.output_dir, args.ckpt_dir, args.device, args.sample_rate)
 
 
 if __name__ == "__main__":
