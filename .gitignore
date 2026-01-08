@@ -1,19 +1,9 @@
-# Ignore user-specific config
+scripts/
 vp/configs/user_config.py
-
-# Ignore cookies directory
 vp/crawling/cookies/
-
-# Ignore virtual env
 venv/
-
-# Ignore ckpt directory
 ckpt/
-
-# Ignore logs
 logs/
-
-# Ignore local video files
 video_crawling_result/
 
 *__pycache__
